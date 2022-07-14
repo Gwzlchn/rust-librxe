@@ -69,31 +69,29 @@ pub fn store_consumer_index(q: &mut rxe_queue_buf, index: u32) {
 }
 
 #[inline]
-pub fn producer_addr(q: &mut rxe_queue_buf) -> *mut rxe_send_wqe {
+pub fn producer_addr<T>(q: &mut rxe_queue_buf) -> *mut T {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
-    unsafe { (q.data.as_mut_ptr().add((prod << q.log2_elem_size) as usize)) as *mut rxe_send_wqe }
+    unsafe { (q.data.as_mut_ptr().add((prod << q.log2_elem_size) as usize)) as *mut T }
 }
 
 #[inline]
-pub fn consumer_addr(q: &mut rxe_queue_buf) -> *mut std::ffi::c_void {
+pub fn consumer_addr<T>(q: &mut rxe_queue_buf) -> *mut T {
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
-    unsafe {
-        (q.data.as_mut_ptr().add((cons << q.log2_elem_size) as usize)) as *mut std::ffi::c_void
-    }
+    unsafe { (q.data.as_mut_ptr().add((cons << q.log2_elem_size) as usize)) as *mut T }
 }
 
 #[inline]
-pub fn addr_from_index(q: &mut rxe_queue_buf, index: u32) -> *mut std::ffi::c_void {
+pub fn addr_from_index<T>(q: &mut rxe_queue_buf, index: u32) -> *mut T {
     let _index = index & q.index_mask;
     unsafe {
         (q.data
             .as_mut_ptr()
-            .add((_index << q.log2_elem_size) as usize)) as *mut std::ffi::c_void
+            .add((_index << q.log2_elem_size) as usize)) as *mut T
     }
 }
 
 #[inline]
-pub fn index_from_addr(q: &rxe_queue_buf, addr: *mut std::ffi::c_void) -> u32 {
+pub fn index_from_addr<T>(q: &rxe_queue_buf, addr: *mut T) -> u32 {
     unsafe {
         ((((addr as *mut u8).sub(q.data.as_ptr() as usize) as u32) >> q.log2_elem_size)
             & q.index_mask)

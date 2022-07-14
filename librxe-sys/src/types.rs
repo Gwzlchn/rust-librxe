@@ -25,6 +25,12 @@ pub struct rxe_cq {
     pub cur_index: u32,
 }
 
+#[repr(C)]
+pub struct rxe_ah {
+    pub ibv_ah: rdma_sys::ibv_ah,
+    pub av: rxe_av,
+    pub ah_num: c_int,
+}
 // rxe_wq related union and struct types
 #[repr(C)]
 pub struct rxe_wq {

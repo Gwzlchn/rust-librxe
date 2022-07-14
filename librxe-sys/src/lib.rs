@@ -63,8 +63,23 @@ pub fn to_rqp(ibqp: *mut rdma_sys::ibv_qp) -> Option<*mut rxe_qp> {
 }
 
 #[inline]
+pub fn to_rah(ibah: *mut rdma_sys::ibv_ah) -> Option<*mut rxe_ah> {
+    if ibah.is_null() {
+        None
+    } else {
+        let rah = container_of!(ibah, rxe_ah, ibv_ah) as *mut rxe_ah;
+        Some(rah)
+    }
+}
+
+#[inline]
 pub fn qp_type(qp: *const rxe_qp) -> rdma_sys::ibv_qp_type::Type {
     unsafe { (*qp).vqp.qp_union.qp.qp_type }
+}
+
+#[inline]
+pub unsafe fn serialize_raw<T: Sized>(src: &T) -> &[u8] {
+    ::std::slice::from_raw_parts((src as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
 #[test]
