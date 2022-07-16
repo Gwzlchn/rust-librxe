@@ -33,20 +33,20 @@ pub fn queue_empty(q: *mut rxe_queue_buf) -> bool {
 pub fn queue_full(q: *mut rxe_queue_buf) -> bool {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
     let cons = atomic_conumer(q).load(Ordering::Acquire);
-    ((prod + 1) & unsafe{(*q).index_mask}) == cons
+    ((prod + 1) & unsafe { (*q).index_mask }) == cons
 }
 
 #[inline]
 pub fn advance_producer(q: *mut rxe_queue_buf) {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
-    let prod_val = ((prod + 1) & unsafe{(*q).index_mask});
+    let prod_val = ((prod + 1) & unsafe { (*q).index_mask });
     atomic_producer(q).store(prod_val, Ordering::Release)
 }
 
 #[inline]
 pub fn advance_consumer(q: *mut rxe_queue_buf) {
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
-    let cons_val = ((cons + 1) & unsafe{(*q).index_mask});
+    let cons_val = ((cons + 1) & unsafe { (*q).index_mask });
     atomic_conumer(q).store(cons_val, Ordering::Release)
 }
 
@@ -73,20 +73,31 @@ pub fn store_consumer_index(q: *mut rxe_queue_buf, index: u32) {
 #[inline]
 pub fn producer_addr<T>(q: *mut rxe_queue_buf) -> *mut T {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
-    unsafe { ((*q).data.as_mut_ptr().add((prod << (*q).log2_elem_size) as usize)) as *mut T }
+    unsafe {
+        ((*q)
+            .data
+            .as_mut_ptr()
+            .add((prod << (*q).log2_elem_size) as usize)) as *mut T
+    }
 }
 
 #[inline]
 pub fn consumer_addr<T>(q: *mut rxe_queue_buf) -> *mut T {
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
-    unsafe { ((*q).data.as_mut_ptr().add((cons << (*q).log2_elem_size) as usize)) as *mut T }
+    unsafe {
+        ((*q)
+            .data
+            .as_mut_ptr()
+            .add((cons << (*q).log2_elem_size) as usize)) as *mut T
+    }
 }
 
 #[inline]
 pub fn addr_from_index<T>(q: *mut rxe_queue_buf, index: u32) -> *mut T {
-    let _index = index & unsafe{(*q).index_mask};
+    let _index = index & unsafe { (*q).index_mask };
     unsafe {
-        ((*q).data
+        ((*q)
+            .data
             .as_mut_ptr()
             .add((_index << (*q).log2_elem_size) as usize)) as *mut T
     }
@@ -128,7 +139,7 @@ pub fn check_qp_queue_full(qp: &mut rxe_qp) -> i32 {
     if qp.err != 0 {
         return qp.err;
     }
-    if cons == ((qp.cur_index + 1) & unsafe{(*q).index_mask}) {
+    if cons == ((qp.cur_index + 1) & unsafe { (*q).index_mask }) {
         qp.err = libc::ENOSPC;
     }
     return qp.err;
