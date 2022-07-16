@@ -11,120 +11,124 @@ fn atomicu32_from_mut(v: &mut u32) -> &mut AtomicU32 {
 }
 
 #[inline]
-fn atomic_producer(q: &mut rxe_queue_buf) -> &mut AtomicU32 {
+fn atomic_producer(q: *mut rxe_queue_buf) -> &'static mut AtomicU32 {
+    let q = unsafe { &mut *q };
     atomicu32_from_mut(&mut q.producer_index)
 }
 
 #[inline]
-fn atomic_conumer(q: &mut rxe_queue_buf) -> &mut AtomicU32 {
+fn atomic_conumer(q: *mut rxe_queue_buf) -> &'static mut AtomicU32 {
+    let q = unsafe { &mut *q };
     atomicu32_from_mut(&mut q.consumer_index)
 }
 
 #[inline]
-pub fn queue_empty(q: &mut rxe_queue_buf) -> bool {
+pub fn queue_empty(q: *mut rxe_queue_buf) -> bool {
     let prod = atomic_producer(q).load(Ordering::Acquire);
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
     prod == cons
 }
 
 #[inline]
-pub fn queue_full(q: &mut rxe_queue_buf) -> bool {
+pub fn queue_full(q: *mut rxe_queue_buf) -> bool {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
     let cons = atomic_conumer(q).load(Ordering::Acquire);
-    ((prod + 1) & q.index_mask) == cons
+    ((prod + 1) & unsafe{(*q).index_mask}) == cons
 }
 
 #[inline]
-pub fn advance_producer(q: &mut rxe_queue_buf) {
+pub fn advance_producer(q: *mut rxe_queue_buf) {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
-    let prod_val = ((prod + 1) & q.index_mask);
+    let prod_val = ((prod + 1) & unsafe{(*q).index_mask});
     atomic_producer(q).store(prod_val, Ordering::Release)
 }
 
 #[inline]
-pub fn advance_consumer(q: &mut rxe_queue_buf) {
+pub fn advance_consumer(q: *mut rxe_queue_buf) {
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
-    let cons_val = ((cons + 1) & q.index_mask);
+    let cons_val = ((cons + 1) & unsafe{(*q).index_mask});
     atomic_conumer(q).store(cons_val, Ordering::Release)
 }
 
 #[inline]
-pub fn load_producer_index(q: &mut rxe_queue_buf) -> u32 {
+pub fn load_producer_index(q: *mut rxe_queue_buf) -> u32 {
     atomic_producer(q).load(Ordering::Relaxed)
 }
 
 #[inline]
-pub fn store_producer_index(q: &mut rxe_queue_buf, index: u32) {
+pub fn store_producer_index(q: *mut rxe_queue_buf, index: u32) {
     atomic_producer(q).store(index, Ordering::Release);
 }
 
 #[inline]
-pub fn load_consumer_index(q: &mut rxe_queue_buf) -> u32 {
+pub fn load_consumer_index(q: *mut rxe_queue_buf) -> u32 {
     atomic_conumer(q).load(Ordering::Relaxed)
 }
 
 #[inline]
-pub fn store_consumer_index(q: &mut rxe_queue_buf, index: u32) {
+pub fn store_consumer_index(q: *mut rxe_queue_buf, index: u32) {
     atomic_conumer(q).store(index, Ordering::Release);
 }
 
 #[inline]
-pub fn producer_addr<T>(q: &mut rxe_queue_buf) -> *mut T {
+pub fn producer_addr<T>(q: *mut rxe_queue_buf) -> *mut T {
     let prod = atomic_producer(q).load(Ordering::Relaxed);
-    unsafe { (q.data.as_mut_ptr().add((prod << q.log2_elem_size) as usize)) as *mut T }
+    unsafe { ((*q).data.as_mut_ptr().add((prod << (*q).log2_elem_size) as usize)) as *mut T }
 }
 
 #[inline]
-pub fn consumer_addr<T>(q: &mut rxe_queue_buf) -> *mut T {
+pub fn consumer_addr<T>(q: *mut rxe_queue_buf) -> *mut T {
     let cons = atomic_conumer(q).load(Ordering::Relaxed);
-    unsafe { (q.data.as_mut_ptr().add((cons << q.log2_elem_size) as usize)) as *mut T }
+    unsafe { ((*q).data.as_mut_ptr().add((cons << (*q).log2_elem_size) as usize)) as *mut T }
 }
 
 #[inline]
-pub fn addr_from_index<T>(q: &mut rxe_queue_buf, index: u32) -> *mut T {
-    let _index = index & q.index_mask;
+pub fn addr_from_index<T>(q: *mut rxe_queue_buf, index: u32) -> *mut T {
+    let _index = index & unsafe{(*q).index_mask};
     unsafe {
-        (q.data
+        ((*q).data
             .as_mut_ptr()
-            .add((_index << q.log2_elem_size) as usize)) as *mut T
+            .add((_index << (*q).log2_elem_size) as usize)) as *mut T
     }
 }
 
 #[inline]
-pub fn index_from_addr<T>(q: &rxe_queue_buf, addr: *mut T) -> u32 {
+pub fn index_from_addr<T>(q: *const rxe_queue_buf, addr: *mut T) -> u32 {
     unsafe {
-        ((((addr as *mut u8).sub(q.data.as_ptr() as usize) as u32) >> q.log2_elem_size)
-            & q.index_mask)
+        ((((addr as *mut u8).sub((*q).data.as_ptr() as usize) as u32) >> (*q).log2_elem_size)
+            & (*q).index_mask)
     }
 }
 
 #[inline]
-pub fn advance_cq_cur_index(cq: &mut rxe_cq) {
-    let q = &cq.queue;
+pub fn advance_cq_cur_index(cq: *mut rxe_cq) {
+    let cq = unsafe { &mut *cq };
+    let q = unsafe { &*(cq.queue) };
     cq.cur_index = (cq.cur_index + 1) & q.index_mask;
 }
 
 #[inline]
-pub fn check_cq_queue_empty(cq: &mut rxe_cq) -> bool {
-    let mut q = &mut cq.queue;
+pub fn check_cq_queue_empty(cq: *mut rxe_cq) -> bool {
+    let cq = unsafe { &*cq };
+    let q = unsafe { cq.queue };
     let prod = atomic_producer(q).load(Ordering::Acquire);
     cq.cur_index == prod
 }
 
 #[inline]
 pub fn advance_qp_cur_index(qp: &mut rxe_qp) {
-    let q = &qp.sq.queue;
+    let q = unsafe { &*(qp.sq.queue) };
     qp.cur_index = (qp.cur_index + 1) & q.index_mask;
 }
 
 #[inline]
 pub fn check_qp_queue_full(qp: &mut rxe_qp) -> i32 {
-    let mut q = &mut qp.sq.queue;
-    let cons = atomic_conumer(&mut q).load(Ordering::Acquire);
+    let mut q = unsafe { qp.sq.queue };
+    let cons = atomic_conumer(q).load(Ordering::Acquire);
     if qp.err != 0 {
         return qp.err;
     }
-    if cons == ((qp.cur_index + 1) & q.index_mask) {
+    if cons == ((qp.cur_index + 1) & unsafe{(*q).index_mask}) {
         qp.err = libc::ENOSPC;
     }
     return qp.err;
@@ -172,7 +176,7 @@ mod tests {
         let data_ptr = data.as_mut_ptr() as usize;
         q.data = data;
         assert_eq!(
-            producer_addr(q) as usize,
+            producer_addr::<rxe_send_wqe>(q) as usize,
             data_ptr + (q.producer_index << q.log2_elem_size) as usize
         );
     }
