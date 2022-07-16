@@ -50,7 +50,6 @@ pub fn rxe_post_recv(
         return Err(Error::EINVAL);
     }
     let rqp = librxe_sys::to_rqp(ibqp).expect("unable to find rxe_qp from ib qp");
-
     let ibqp = unsafe { &mut *ibqp };
     if ibqp.state == ibv_qp_state::IBV_QPS_RESET {
         return Err(Error::EINVAL);
@@ -85,28 +84,28 @@ pub fn rxe_post_recv(
 pub fn rxe_poll_cq(
     ibcq: *mut rdma_sys::ibv_cq,
     ne: libc::c_int,
-    wc: *mut rdma_sys::ibv_wc,
+    mut wc: *mut rdma_sys::ibv_wc,
 ) -> libc::c_int {
     let cq = librxe_sys::to_rcq(ibcq).expect("unable to find rxe_cq from ibv_cq");
     unsafe {
         libc::pthread_spin_lock(&mut (*cq).lock);
     }
-    let q = unsafe { &mut (*cq).queue };
+    let q = unsafe { (*cq).queue };
     let mut npolled = 0;
     while npolled < ne {
         if librxe_sys::queue_empty(q) {
             break;
         }
-        let src_addr: *mut u8 = librxe_sys::consumer_addr(q);
+        let src_addr: *mut rdma_sys::ibv_wc = librxe_sys::consumer_addr(q);
         unsafe {
-            std::ptr::copy_nonoverlapping(src_addr, wc as *mut u8, 1);
+            std::ptr::copy_nonoverlapping(src_addr, wc, 1);
         }
         librxe_sys::advance_consumer(q);
         npolled = npolled + 1;
-        unsafe { wc.add(1) };
+        unsafe { wc = wc.add(1) };
     }
     unsafe {
-        libc::pthread_spin_lock(&mut (*cq).lock);
+        libc::pthread_spin_unlock(&mut (*cq).lock);
     }
 
     return npolled;
@@ -127,15 +126,14 @@ fn post_one_send(
     if let Err(e) = validate_send_wr(qp, ibwr, length) {
         return Err(e);
     }
-    let wqe =
-        unsafe { &mut *(librxe_sys::producer_addr::<librxe_sys::rxe_send_wqe>(&mut sq.queue)) };
+    let wqe = unsafe { &mut *(librxe_sys::producer_addr::<librxe_sys::rxe_send_wqe>(sq.queue)) };
     if let Err(e) = init_send_wqe(qp, sq, ibwr, length, wqe) {
         return Err(e);
     }
-    if librxe_sys::queue_full(&mut sq.queue) {
+    if librxe_sys::queue_full(sq.queue) {
         return Err(Error::ENOMEM);
     }
-    librxe_sys::advance_producer(&mut sq.queue);
+    librxe_sys::advance_producer(sq.queue);
     Ok(())
 }
 
@@ -184,7 +182,6 @@ fn convert_send_wr(
     uwr: &rdma_sys::ibv_send_wr,
 ) {
     unsafe {
-        //
         *kwr = std::mem::zeroed::<librxe_sys::rxe_send_wr>();
     }
     kwr.wr_id = uwr.wr_id;
@@ -310,8 +307,8 @@ fn post_send_db(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
     let cmd = &mut librxe_sys::ibv_post_send::default();
     let resp = &mut librxe_sys::ib_uverbs_post_send_resp::default();
     cmd.hdr.command = librxe_sys::ib_uverbs_write_cmds::IB_USER_VERBS_CMD_POST_SEND;
-    cmd.hdr.in_words = (std::mem::size_of_val(&cmd) / 4) as _;
-    cmd.hdr.out_words = (std::mem::size_of_val(&resp) / 4) as _;
+    cmd.hdr.in_words = (std::mem::size_of_val(cmd) / 4) as _;
+    cmd.hdr.out_words = (std::mem::size_of_val(resp) / 4) as _;
     unsafe {
         cmd.__bindgen_anon_1.__bindgen_anon_1.as_mut().response = resp as *mut _ as u64;
         cmd.__bindgen_anon_1.__bindgen_anon_1.as_mut().qp_handle = ibqp.handle;
@@ -338,14 +335,13 @@ fn rxe_post_one_recv(
     let rq = unsafe { &mut *rq };
     let recv_wr = unsafe { &mut *recv_wr };
     let mut length = 0;
-    if librxe_sys::queue_full(&mut rq.queue) {
+    if librxe_sys::queue_full(rq.queue) {
         return Err(Error::ENOMEM);
     }
     if recv_wr.num_sge as u32 > rq.max_sge {
         return Err(Error::EINVAL);
     }
-    let wqe =
-        unsafe { &mut *(librxe_sys::producer_addr::<librxe_sys::rxe_recv_wqe>(&mut rq.queue)) };
+    let wqe = unsafe { &mut *(librxe_sys::producer_addr::<librxe_sys::rxe_recv_wqe>(rq.queue)) };
     wqe.wr_id = recv_wr.wr_id;
     wqe.num_sge = recv_wr.num_sge as _;
     unsafe {
@@ -377,7 +373,7 @@ fn rxe_post_one_recv(
     wqe.dma.cur_sge = 0;
     wqe.dma.num_sge = wqe.num_sge;
     wqe.dma.sge_offset = 0;
-    librxe_sys::advance_producer(&mut rq.queue);
+    librxe_sys::advance_producer(rq.queue);
 
     Ok(())
 }
