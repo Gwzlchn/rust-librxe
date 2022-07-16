@@ -18,7 +18,7 @@ pub struct verbs_cq {
 pub struct rxe_cq {
     pub vcq: verbs_cq,
     pub mmap_info: mminfo,
-    pub queue: rxe_queue_buf,
+    pub queue: *mut rxe_queue_buf,
     pub lock: libc::pthread_spinlock_t,
     pub wc: *mut ib_uverbs_wc,
     pub wc_size: usize,
@@ -34,7 +34,7 @@ pub struct rxe_ah {
 // rxe_wq related union and struct types
 #[repr(C)]
 pub struct rxe_wq {
-    pub queue: rxe_queue_buf,
+    pub queue: *mut rxe_queue_buf,
     pub lock: libc::pthread_spinlock_t,
     pub max_sge: c_uint,
     pub max_inline: c_uint,
@@ -58,7 +58,7 @@ pub struct verbs_xrcd {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub union verbs_qp {
+pub struct verbs_qp {
     pub qp_union: verbs_qp_union_t,
     pub comp_mask: u32,
     pub xrcd: *mut verbs_xrcd,
