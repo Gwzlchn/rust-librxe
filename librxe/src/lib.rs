@@ -1,6 +1,10 @@
 use nix::Error;
 use rdma_sys::{ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_wr_opcode};
 
+mod rxe_hdr;
+mod rxe_opcode;
+mod rxe_req;
+
 pub fn rxe_post_send(
     ibqp: *mut rdma_sys::ibv_qp,
     wr_list: *mut rdma_sys::ibv_send_wr,

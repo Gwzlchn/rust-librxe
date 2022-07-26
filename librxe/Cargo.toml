@@ -10,7 +10,7 @@ librxe-sys = { path = "../librxe-sys" }
 rdma-sys = {path="../../rdma-sys"}
 nix = "0.24.1"
 libc = "0.2.126"
+likely_stable = "0.1.2"
 
 [dev-dependencies]
-tempdir = "0.3"
-ibverbs=  "0.7"
+ibverbs=  { path = "../../rust-ibverbs/ibverbs" }
