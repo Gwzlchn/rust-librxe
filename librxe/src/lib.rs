@@ -4,6 +4,7 @@ use rdma_sys::{ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_wr_opcode};
 mod rxe_hdr;
 mod rxe_opcode;
 mod rxe_req;
+mod rxe_verbs;
 
 pub fn rxe_post_send(
     ibqp: *mut rdma_sys::ibv_qp,
