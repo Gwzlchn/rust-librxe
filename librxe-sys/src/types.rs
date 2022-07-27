@@ -65,6 +65,40 @@ pub struct verbs_qp {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum rxe_qp_state {
+    QP_STATE_RESET,
+    QP_STATE_INIT,
+    QP_STATE_READY,
+    QP_STATE_DRAIN,   /* req only */
+    QP_STATE_DRAINED, /* req only */
+    QP_STATE_ERROR,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rxe_req_info {
+    pub state: rxe_qp_state,
+    pub wqe_index: c_int,
+    pub psn: u32,
+    pub opcode: c_int,
+    pub need_rd_atomic: c_int,
+    pub wait_psn: c_int,
+    pub need_retry: c_int,
+    pub noack_pkts: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rxe_comp_info {
+    pub psn: u32,
+    pub opcode: c_int,
+    pub timeout: c_int,
+    pub timeout_retry: c_int,
+    pub started_retry: c_int,
+    pub retry_cnt: u32,
+    pub rnr_retry: u32,
+}
+#[repr(C)]
 pub struct rxe_qp {
     pub vqp: verbs_qp,
     pub rq_mmap_info: mminfo,
@@ -74,4 +108,10 @@ pub struct rxe_qp {
     pub ssn: c_uint,
     pub cur_index: u32,
     pub err: c_int,
+    // addtional variables 
+    pub mtu: c_uint,
+    pub req: rxe_req_info,
+    pub comp: rxe_comp_info,
+    pub valid: c_uint,
+    pub attr: rdma_sys::ibv_qp_attr,
 }
