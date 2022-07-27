@@ -1,11 +1,6 @@
-macro_rules! BIT {
-    ($nr:expr) => {{
-        1usize << $nr
-    }};
-}
-
 pub mod rxe_wr_mask {
-    pub type Type = usize;
+    use crate::BIT;
+    pub type Type = u32;
     pub const WR_INLINE_MASK: Type = BIT!(0);
     pub const WR_ATOMIC_MASK: Type = BIT!(1);
     pub const WR_SEND_MASK: Type = BIT!(2);
@@ -21,45 +16,53 @@ const WR_MAX_QPT: usize = 8;
 
 const WR_MAX_OPCODE: usize = 16;
 
-pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE] = {
+pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE as usize] = {
     use rdma_sys::{ibv_qp_type::*, ibv_wr_opcode::*};
     use rxe_wr_mask::*;
     let mut arr = [[0x0; WR_MAX_QPT]; WR_MAX_OPCODE];
-    arr[IBV_WR_RDMA_WRITE as usize][IBV_QPT_RC as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
-    arr[IBV_WR_RDMA_WRITE as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
+    arr[IBV_WR_RDMA_WRITE as usize][IBV_QPT_RC as usize as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
+    arr[IBV_WR_RDMA_WRITE as usize][IBV_QPT_UC as usize as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
 
-    arr[IBV_WR_RDMA_WRITE_WITH_IMM as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
-    arr[IBV_WR_RDMA_WRITE_WITH_IMM as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_WRITE_MASK;
+    arr[IBV_WR_RDMA_WRITE_WITH_IMM as usize][IBV_QPT_UC as usize as usize] =
+        WR_INLINE_MASK | WR_WRITE_MASK;
+    arr[IBV_WR_RDMA_WRITE_WITH_IMM as usize][IBV_QPT_UC as usize as usize] =
+        WR_INLINE_MASK | WR_WRITE_MASK;
 
-    arr[IBV_WR_SEND as usize][IBV_QPT_RC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND as usize][IBV_QPT_UD as usize] = WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND as usize][IBV_QPT_RC as usize as usize] = WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND as usize][IBV_QPT_UC as usize as usize] = WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND as usize][IBV_QPT_UD as usize as usize] = WR_INLINE_MASK | WR_SEND_MASK;
     // FIXME: ignore the IB_QPT_GSI type
 
-    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_RC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_UD as usize] = WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_RC as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_UC as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_IMM as usize][IBV_QPT_UD as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
     // FIXME: ignore the IB_QPT_GSI type
 
-    arr[IBV_WR_RDMA_READ as usize][IBV_QPT_RC as usize] = WR_SEND_MASK;
+    arr[IBV_WR_RDMA_READ as usize][IBV_QPT_RC as usize as usize] = WR_SEND_MASK;
 
-    arr[IBV_WR_ATOMIC_CMP_AND_SWP as usize][IBV_QPT_RC as usize] = WR_ATOMIC_MASK;
+    arr[IBV_WR_ATOMIC_CMP_AND_SWP as usize][IBV_QPT_RC as usize as usize] = WR_ATOMIC_MASK;
 
-    arr[IBV_WR_ATOMIC_FETCH_AND_ADD as usize][IBV_QPT_RC as usize] = WR_ATOMIC_MASK;
+    arr[IBV_WR_ATOMIC_FETCH_AND_ADD as usize][IBV_QPT_RC as usize as usize] = WR_ATOMIC_MASK;
 
     // IB_WR_LSO is not supported in RXE
 
-    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_RC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_UC as usize] = WR_INLINE_MASK | WR_SEND_MASK;
-    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_UD as usize] = WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_RC as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_UC as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
+    arr[IBV_WR_SEND_WITH_INV as usize][IBV_QPT_UD as usize as usize] =
+        WR_INLINE_MASK | WR_SEND_MASK;
 
     // IBV_WR_DRIVER1 = 11, IB_UVERBS_WR_RDMA_READ_WITH_INV = 11 also
-    arr[IBV_WR_DRIVER1 as usize][IBV_QPT_UD as usize] = WR_READ_MASK;
+    arr[IBV_WR_DRIVER1 as usize][IBV_QPT_UD as usize as usize] = WR_READ_MASK;
 
-    arr[IBV_WR_LOCAL_INV as usize][IBV_QPT_UD as usize] = WR_LOCAL_OP_MASK;
+    arr[IBV_WR_LOCAL_INV as usize][IBV_QPT_UD as usize as usize] = WR_LOCAL_OP_MASK;
 
-    arr[IBV_WR_BIND_MW as usize][IBV_QPT_RC as usize] = WR_LOCAL_OP_MASK;
-    arr[IBV_WR_BIND_MW as usize][IBV_QPT_UC as usize] = WR_LOCAL_OP_MASK;
+    arr[IBV_WR_BIND_MW as usize][IBV_QPT_RC as usize as usize] = WR_LOCAL_OP_MASK;
+    arr[IBV_WR_BIND_MW as usize][IBV_QPT_UC as usize as usize] = WR_LOCAL_OP_MASK;
 
     // FIXME: ignore IB_WR_REG_MR  wqe type
 
@@ -67,7 +70,7 @@ pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE] =
 };
 
 pub mod rxe_hdr_type {
-    pub type Type = usize;
+    pub type Type = u8;
     pub const RXE_LRH: Type = 0;
     pub const RXE_GRH: Type = 1;
     pub const RXE_BTH: Type = 2;
@@ -85,7 +88,8 @@ pub mod rxe_hdr_type {
 
 pub mod rxe_hdr_mask {
     use super::rxe_hdr_type::*;
-    pub type Type = usize;
+    use crate::BIT;
+    pub type Type = u32;
     pub const RXE_LRH_MASK: Type = BIT!(RXE_LRH);
     pub const RXE_GRH_MASK: Type = BIT!(RXE_GRH);
     pub const RXE_BTH_MASK: Type = BIT!(RXE_BTH);
@@ -119,8 +123,8 @@ pub mod rxe_hdr_mask {
 pub struct RxeOpcodeInfo {
     pub name: &'static str,
     pub mask: rxe_hdr_mask::Type,
-    pub length: usize,
-    pub offset: [usize; rxe_hdr_type::NUM_HDR_TYPES as usize],
+    pub length: u8,
+    pub offset: [u8; rxe_hdr_type::NUM_HDR_TYPES as usize],
 }
 
 const DEFAULT_RXE_OPCODE_INFO: RxeOpcodeInfo = RxeOpcodeInfo {
@@ -132,7 +136,7 @@ const DEFAULT_RXE_OPCODE_INFO: RxeOpcodeInfo = RxeOpcodeInfo {
 
 pub const RXE_NUM_OPCODE: usize = 256;
 
-pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
+pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE as usize] = {
     use super::rxe_hdr::rxe_hdr_length::*;
     use rdma_sys::ibv_opcode::*;
     use rxe_hdr_mask::*;
@@ -143,22 +147,22 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_RC_SEND_FIRST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_RWR_MASK | RXE_SEND_MASK | RXE_START_MASK;
     arr[IBV_OPCODE_RC_SEND_FIRST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_FIRST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_FIRST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].name = "IBV_OPCODE_RC_SEND_MIDDLE";
     arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_SEND_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_MIDDLE as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_LAST as usize].name = "IBV_OPCODE_RC_SEND_LAST";
     arr[IBV_OPCODE_RC_SEND_LAST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_COMP_MASK | RXE_SEND_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_SEND_LAST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_LAST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_LAST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE";
@@ -169,9 +173,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_SEND_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].length = RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_ONLY as usize].name = "IBV_OPCODE_RC_SEND_ONLY";
@@ -184,8 +188,8 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_SEND_ONLY as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_ONLY as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_ONLY as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE";
@@ -200,33 +204,33 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].length = RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].name = "IBV_OPCODE_RC_RDMA_WRITE_FIRST";
     arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].mask =
         RXE_RETH_MASK | RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_START_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].length = RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_RETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].name = "IBV_OPCODE_RC_RDMA_WRITE_MIDDLE";
     arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].name = "IBV_OPCODE_RC_RDMA_WRITE_LAST";
     arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE";
@@ -241,9 +245,10 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].name = "IBV_OPCODE_RC_RDMA_WRITE_ONLY";
@@ -255,9 +260,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].length = RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_RETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].name =
@@ -275,20 +280,21 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].name = "IBV_OPCODE_RC_RDMA_READ_REQUEST";
     arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].mask =
         RXE_RETH_MASK | RXE_REQ_MASK | RXE_READ_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].length = RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_RETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_READ_REQUEST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].name =
@@ -296,9 +302,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].mask =
         RXE_AETH_MASK | RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_START_MASK;
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].length = RXE_BTH_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_AETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_AETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].name =
@@ -306,17 +312,18 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].mask =
         RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_PAYLOAD as usize] =
+        RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].name =
         "IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST";
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].mask =
         RXE_AETH_MASK | RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].length = RXE_BTH_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_AETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_AETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].name =
@@ -324,46 +331,49 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].mask =
         RXE_AETH_MASK | RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].length = RXE_BTH_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_AETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_AETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].name = "IBV_OPCODE_RC_ACKNOWLEDGE";
     arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].mask =
         RXE_AETH_MASK | RXE_ACK_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].length = RXE_BTH_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_AETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES + RXE_AETH_BYTES;
+    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_AETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_ACKNOWLEDGE as usize].offset[RXE_PAYLOAD as usize] =
+        RXE_BTH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].name = "IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE";
     arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].mask =
         RXE_AETH_MASK | RXE_ATMACK_MASK | RXE_ACK_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].length =
         RXE_BTH_BYTES + RXE_ATMACK_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_AETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_ATMACK] =
+    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_AETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_ATMACK as usize] =
         RXE_BTH_BYTES + RXE_AETH_BYTES;
-    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_ATMACK_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].name = "IBV_OPCODE_RC_COMPARE_SWAP";
     arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].mask =
         RXE_ATMETH_MASK | RXE_REQ_MASK | RXE_ATOMIC_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].length = RXE_BTH_BYTES + RXE_ATMETH_BYTES;
-    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_ATMETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES + RXE_ATMETH_BYTES;
+    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_ATMETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_COMPARE_SWAP as usize].offset[RXE_PAYLOAD as usize] =
+        RXE_BTH_BYTES + RXE_ATMETH_BYTES;
 
     arr[IBV_OPCODE_RC_FETCH_ADD as usize].name = "IBV_OPCODE_RC_FETCH_ADD";
     arr[IBV_OPCODE_RC_FETCH_ADD as usize].mask =
         RXE_ATMETH_MASK | RXE_REQ_MASK | RXE_ATOMIC_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RC_FETCH_ADD as usize].length = RXE_BTH_BYTES + RXE_ATMETH_BYTES;
-    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_ATMETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES + RXE_ATMETH_BYTES;
+    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_ATMETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_FETCH_ADD as usize].offset[RXE_PAYLOAD as usize] =
+        RXE_BTH_BYTES + RXE_ATMETH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].name =
         "IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE";
@@ -374,9 +384,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_SEND_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].length = RXE_BTH_BYTES + RXE_IETH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_IETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_IETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_LAST_WITH_INVALIDATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IETH_BYTES;
 
     arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].name = "IBV_OPCODE_RC_SEND_ONLY_INV";
@@ -391,9 +401,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK
         | RXE_START_MASK;
     arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].length = RXE_BTH_BYTES + RXE_IETH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_IETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_IETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RC_SEND_ONLY_WITH_INVALIDATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IETH_BYTES;
 
     /* UC */
@@ -401,22 +411,22 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_UC_SEND_FIRST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_RWR_MASK | RXE_SEND_MASK | RXE_START_MASK;
     arr[IBV_OPCODE_UC_SEND_FIRST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_FIRST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_FIRST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].name = "IBV_OPCODE_UC_SEND_MIDDLE";
     arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_SEND_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_MIDDLE as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_SEND_LAST as usize].name = "IBV_OPCODE_UC_SEND_LAST";
     arr[IBV_OPCODE_UC_SEND_LAST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_COMP_MASK | RXE_SEND_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_UC_SEND_LAST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_LAST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_LAST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE";
@@ -427,9 +437,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_SEND_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].length = RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_UC_SEND_ONLY as usize].name = "IBV_OPCODE_UC_SEND_ONLY";
@@ -442,8 +452,8 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_SEND_ONLY as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_ONLY as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_ONLY as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE";
@@ -458,33 +468,33 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].length = RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].name = "IBV_OPCODE_UC_RDMA_WRITE_FIRST";
     arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].mask =
         RXE_RETH_MASK | RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_START_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].length = RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_RETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].name = "IBV_OPCODE_UC_RDMA_WRITE_MIDDLE";
     arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].name = "IBV_OPCODE_UC_RDMA_WRITE_LAST";
     arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].mask =
         RXE_PAYLOAD_MASK | RXE_REQ_MASK | RXE_WRITE_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].length = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD as usize] = RXE_BTH_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE";
@@ -499,9 +509,10 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].name = "IBV_OPCODE_UC_RDMA_WRITE_ONLY";
@@ -513,9 +524,9 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].length = RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_RETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].name =
@@ -533,11 +544,12 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UC_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_IMMDT_BYTES;
 
     /* RD */
@@ -553,10 +565,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK;
     arr[IBV_OPCODE_RD_SEND_FIRST as usize].length =
         RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].name = "IBV_OPCODE_RD_SEND_MIDDLE";
@@ -569,10 +582,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].length =
         RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_MIDDLE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_SEND_LAST as usize].name = "IBV_OPCODE_RD_SEND_LAST";
@@ -586,10 +600,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_SEND_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_SEND_LAST as usize].length = RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_LAST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].name =
@@ -606,13 +621,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RD_SEND_ONLY as usize].name = "IBV_OPCODE_RD_SEND_ONLY";
@@ -628,10 +643,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_SEND_ONLY as usize].length = RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].name =
@@ -651,13 +667,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].name = "IBV_OPCODE_RD_RDMA_WRITE_FIRST";
@@ -671,12 +687,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].length =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_RETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_RETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].name = "IBV_OPCODE_RD_RDMA_WRITE_MIDDLE";
@@ -689,11 +706,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].length =
         RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_MIDDLE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].name = "IBV_OPCODE_RD_RDMA_WRITE_LAST";
@@ -706,10 +723,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].length =
         RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].name =
@@ -728,13 +746,14 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_RDETH as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_LAST_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].name = "IBV_OPCODE_RD_RDMA_WRITE_ONLY";
@@ -750,12 +769,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].length =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_RETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_RETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_RETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].name =
@@ -776,15 +796,16 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_RETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RDETH as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_RETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_RETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_WRITE_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES + RXE_RETH_BYTES + RXE_IMMDT_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].name = "IBV_OPCODE_RD_RDMA_READ_REQUEST";
@@ -798,13 +819,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].length =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_DETH] =
+    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_DETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_RETH] =
+    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_RETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_READ_REQUEST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].name =
@@ -817,11 +838,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK;
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].length =
         RXE_BTH_BYTES + RXE_AETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_AETH] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_AETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_FIRST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].name =
@@ -829,9 +850,10 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].mask =
         RXE_RDETH_MASK | RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_MIDDLE_MASK;
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].length = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_RDETH as usize] =
+        RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_MIDDLE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].name =
@@ -840,11 +862,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         RXE_RDETH_MASK | RXE_AETH_MASK | RXE_PAYLOAD_MASK | RXE_ACK_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].length =
         RXE_BTH_BYTES + RXE_AETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_AETH] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_AETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_LAST as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].name =
@@ -857,11 +879,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].length =
         RXE_BTH_BYTES + RXE_AETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_AETH] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_AETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_RDMA_READ_RESPONSE_ONLY as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].name = "IBV_OPCODE_RD_ACKNOWLEDGE";
@@ -869,9 +891,10 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         RXE_RDETH_MASK | RXE_AETH_MASK | RXE_ACK_MASK | RXE_START_MASK | RXE_END_MASK;
     arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].length =
         RXE_BTH_BYTES + RXE_AETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_AETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_ACKNOWLEDGE as usize].offset[RXE_AETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
 
     arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].name = "IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE";
     arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].mask = RXE_RDETH_MASK
@@ -882,11 +905,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].length =
         RXE_BTH_BYTES + RXE_ATMACK_BYTES + RXE_AETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_AETH] =
+    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_AETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_ATMACK] =
+    arr[IBV_OPCODE_RD_ATOMIC_ACKNOWLEDGE as usize].offset[RXE_ATMACK as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_AETH_BYTES;
 
     arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].name = "RD_COMPARE_SWAP";
@@ -900,12 +923,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].length =
         RXE_BTH_BYTES + RXE_ATMETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_ATMETH] =
+    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_ATMETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_COMPARE_SWAP as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_ATMETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
 
     arr[IBV_OPCODE_RD_FETCH_ADD as usize].name = "IBV_OPCODE_RD_FETCH_ADD";
@@ -919,12 +943,13 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_RD_FETCH_ADD as usize].length =
         RXE_BTH_BYTES + RXE_ATMETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_RDETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_DETH] = RXE_BTH_BYTES + RXE_RDETH_BYTES;
-    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_ATMETH] =
+    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_RDETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_DETH as usize] =
+        RXE_BTH_BYTES + RXE_RDETH_BYTES;
+    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_ATMETH as usize] =
         RXE_BTH_BYTES + RXE_RDETH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_RD_FETCH_ADD as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_ATMETH_BYTES + RXE_DETH_BYTES + RXE_RDETH_BYTES;
 
     /* UD */
@@ -940,9 +965,10 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_START_MASK
         | RXE_END_MASK;
     arr[IBV_OPCODE_UD_SEND_ONLY as usize].length = RXE_BTH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_DETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_PAYLOAD] = RXE_BTH_BYTES + RXE_DETH_BYTES;
+    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_DETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UD_SEND_ONLY as usize].offset[RXE_PAYLOAD as usize] =
+        RXE_BTH_BYTES + RXE_DETH_BYTES;
 
     arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].name =
         "IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE";
@@ -959,11 +985,11 @@ pub const RXE_OPCODE_INFO: [RxeOpcodeInfo; RXE_NUM_OPCODE] = {
         | RXE_END_MASK;
     arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].length =
         RXE_BTH_BYTES + RXE_IMMDT_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH] = 0;
-    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH] = RXE_BTH_BYTES;
-    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT] =
+    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_BTH as usize] = 0;
+    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_DETH as usize] = RXE_BTH_BYTES;
+    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_IMMDT as usize] =
         RXE_BTH_BYTES + RXE_DETH_BYTES;
-    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD] =
+    arr[IBV_OPCODE_UD_SEND_ONLY_WITH_IMMEDIATE as usize].offset[RXE_PAYLOAD as usize] =
         RXE_BTH_BYTES + RXE_DETH_BYTES + RXE_IMMDT_BYTES;
 
     arr
