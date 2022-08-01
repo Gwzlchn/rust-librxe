@@ -145,6 +145,19 @@ pub fn check_qp_queue_full(qp: &mut rxe_qp) -> i32 {
     return qp.err;
 }
 
+#[inline]
+pub fn queue_head<T>(q: *mut rxe_queue_buf) -> Option<*mut T> {
+    if queue_empty(q) == true {
+        None
+    } else {
+        Some(consumer_addr(q))
+    }
+}
+#[inline]
+pub fn queue_next_index(q: *const rxe_queue_buf, index: c_int) -> c_int {
+    (index + 1) & (unsafe { (*q).index_mask } as c_int)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

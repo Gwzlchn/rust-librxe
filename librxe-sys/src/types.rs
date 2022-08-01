@@ -81,6 +81,8 @@ pub struct rxe_req_info {
     pub wqe_index: c_int,
     pub psn: u32,
     pub opcode: c_int,
+    pub rd_atomic: c_int, // as atomic_int
+    pub wait_fence: c_int,
     pub need_rd_atomic: c_int,
     pub wait_psn: c_int,
     pub need_retry: c_int,
@@ -98,6 +100,12 @@ pub struct rxe_comp_info {
     pub retry_cnt: u32,
     pub rnr_retry: u32,
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rxe_resp_info {
+    pub state: rxe_qp_state,
+}
 #[repr(C)]
 pub struct rxe_qp {
     pub vqp: verbs_qp,
@@ -108,10 +116,14 @@ pub struct rxe_qp {
     pub ssn: c_uint,
     pub cur_index: u32,
     pub err: c_int,
-    // addtional variables 
+    // addtional variables
+    pub src_port: u32,
     pub mtu: c_uint,
     pub req: rxe_req_info,
     pub comp: rxe_comp_info,
+    pub resp: rxe_resp_info,
     pub valid: c_uint,
     pub attr: rdma_sys::ibv_qp_attr,
+    /* guard requester and completer */
+    pub state_lock: libc::pthread_spinlock_t,
 }
