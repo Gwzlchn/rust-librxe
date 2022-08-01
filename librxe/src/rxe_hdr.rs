@@ -1,15 +1,15 @@
+#![allow(dead_code)]
 use self::{aeth_mask::*, bth_mask::*, deth_mask::*, rdeth_mask::*};
 use crate::rxe_opcode::rxe_hdr_type::*;
 use crate::rxe_opcode::*;
 use bytes::BytesMut;
-
 #[derive(Debug, Clone)]
 pub struct RxePktInfo {
     pub hdr: BytesMut,   /* IBA packet buffer */
     pub mask: u32,       /* useful info about pkt */
     pub psn: u32,        /* bth psn of packet */
     pub pkey_index: u16, /* partition of pkt */
-    pub paylen: u16,     /* length of bth - icrc*/
+    pub paylen: u16,     /* length from bth start to icrc end */
     pub port_num: u8,    /* port pkt received on */
     pub opcode: u8,      /* bth opcode of packet */
 }
@@ -187,10 +187,10 @@ impl RxePktInfo {
         paylen: u16,
         port_num: u8,
         opcode: u8,
-        mtu: u32
+        mtu: u32,
     ) -> Self {
         RxePktInfo {
-            hdr: BytesMut::with_capacity(mtu as _),
+            hdr: BytesMut::zeroed(mtu as _),
             mask: mask,
             psn: psn,
             pkey_index: pkey_index,
@@ -218,6 +218,16 @@ impl RxePktInfo {
             - (RXE_OPCODE_INFO[self.opcode as usize].offset[RXE_PAYLOAD as usize] as usize)
             - (self.bth_pad() as usize)
             - RXE_ICRC_SIZE as usize
+    }
+    // create new buffer view points by offset
+    #[inline]
+    pub fn split_iba_pkt(&mut self, offset: usize) -> BytesMut {
+        self.hdr.split_off(offset)
+    }
+    // destory a buffer view
+    #[inline]
+    pub fn unsplit_iba_pkt(&mut self, to_unsplit: BytesMut) {
+        self.hdr.unsplit(to_unsplit)
     }
     #[inline]
     pub fn header_size(&self) -> usize {
@@ -666,7 +676,6 @@ mod tests {
         let opcode = IBV_OPCODE_RC_ACKNOWLEDGE;
         let hdr_len = rxe_pkt.get_iba_hdr_len();
         rxe_pkt.set_iba_pkt_len(hdr_len);
-        
         let dest_qp = 0x18;
         let psn = 0xC8002C;
         rxe_pkt.bth_init(opcode, false, false, 0, 0xFFFF, dest_qp, false, psn);
