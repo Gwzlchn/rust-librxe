@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+/// RXE Work request mask
 pub mod rxe_wr_mask {
     use crate::BIT;
     pub type Type = u32;
@@ -13,9 +15,11 @@ pub mod rxe_wr_mask {
 }
 
 const WR_MAX_QPT: usize = 8;
-
 const WR_MAX_OPCODE: usize = 16;
 
+/// A two-dimensional matrix to store all work-request masks
+/// The number of rows equals to WR_MAX_OPCODE, representing all Work-Request operation types
+/// The number of columes equals to WR_MAX_QPT, representing all Queue-Pair types
 pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE as usize] = {
     use rdma_sys::{ibv_qp_type::*, ibv_wr_opcode::*};
     use rxe_wr_mask::*;
@@ -69,6 +73,11 @@ pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE as
     arr
 };
 
+/// Get WR mask by current wqe opcode and qp type
+#[inline]
+pub fn wr_opcode_mask(qp: &librxe_sys::rxe_qp, opcode: u32) -> u32 {
+    RXE_WR_OPCODE_INFO[opcode as usize][librxe_sys::qp_type(qp) as usize]
+}
 pub mod rxe_hdr_type {
     pub type Type = u8;
     pub const RXE_LRH: Type = 0;
@@ -123,6 +132,7 @@ pub mod rxe_hdr_mask {
 pub struct RxeOpcodeInfo {
     pub name: &'static str,
     pub mask: rxe_hdr_mask::Type,
+    // all IBA header length
     pub length: u8,
     pub offset: [u8; rxe_hdr_type::NUM_HDR_TYPES as usize],
 }
