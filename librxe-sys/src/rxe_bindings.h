@@ -5,5 +5,6 @@
 #include <rdma/ib_user_verbs.h>
 #include <infiniband/verbs.h>
 #include <libibverbs/kern-abi.h>
+#include <rxe/rxe.h>
 
 #endif // RXE_BINDINGS_H

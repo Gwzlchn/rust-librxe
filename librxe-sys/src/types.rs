@@ -24,6 +24,21 @@ pub struct rxe_cq {
     pub wc_size: usize,
     pub cur_index: u32,
 }
+#[repr(C)]
+pub struct rxe_rq {
+    pub max_wr: c_int,
+    pub max_sge: c_int,
+    pub producer_lock: libc::pthread_spinlock_t,
+    pub consumer_lock: libc::pthread_spinlock_t,
+}
+#[repr(C)]
+pub struct rxe_srq {
+    pub ibv_srq: rdma_sys::ibv_srq,
+    pub rq: rxe_rq,
+    pub srq_num: u32,
+    pub limit: c_int,
+    pub error: c_int,
+}
 
 #[repr(C)]
 pub struct rxe_ah {
@@ -33,6 +48,7 @@ pub struct rxe_ah {
 }
 // rxe_wq related union and struct types
 #[repr(C)]
+#[derive(Clone)]
 pub struct rxe_wq {
     pub queue: *mut rxe_queue_buf,
     pub lock: libc::pthread_spinlock_t,
@@ -102,11 +118,51 @@ pub struct rxe_comp_info {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub struct rxe_resp_info {
-    pub state: rxe_qp_state,
+pub enum rdatm_res_state {
+    rdatm_res_state_next,
+    rdatm_res_state_new,
+    rdatm_res_state_replay,
+}
+
+#[repr(C)]
+pub struct resp_res {
+    pub res_type: c_int,
+    pub replay: c_int,
+    pub first_psn: u32,
+    pub last_psn: u32,
+    pub cur_psn: u32,
+    pub state: rdatm_res_state,
 }
 #[repr(C)]
+pub struct rxe_resp_srq_wqe {
+    pub wqe: rxe_recv_wqe,
+    pub sge: [rdma_sys::ibv_sge; rxe_device_param::RXE_MAX_SGE as usize],
+}
+#[repr(C)]
+pub struct rxe_resp_info {
+    pub state: rxe_qp_state,
+    pub msn: u32,
+    pub psn: u32,
+    pub ack_psn: u32,
+    pub opcode: c_int,
+    pub drop_msg: c_int,
+    pub sent_psn_nak: c_int,
+    pub status: rdma_sys::ibv_wc_status::Type,
+    pub aeth_syndrome: u8,
+    // receive only
+    pub wqe: *mut rxe_recv_wqe,
+    // RDMA read/ atomic only
+    pub va: u64,
+    pub offset: u64,
+    pub resid: u32,
+    pub rkey: u32,
+    pub length: u32,
+    pub atomic_orig: u64,
+    // SRQ only
+    pub srq_wqe: rxe_resp_srq_wqe,
+}
+#[repr(C)]
+#[derive(Clone)]
 pub struct rxe_qp {
     pub vqp: verbs_qp,
     pub rq_mmap_info: mminfo,
@@ -117,13 +173,40 @@ pub struct rxe_qp {
     pub cur_index: u32,
     pub err: c_int,
     // addtional variables
-    pub src_port: u32,
-    pub mtu: c_uint,
-    pub req: rxe_req_info,
-    pub comp: rxe_comp_info,
-    pub resp: rxe_resp_info,
-    pub valid: c_uint,
-    pub attr: rdma_sys::ibv_qp_attr,
-    /* guard requester and completer */
-    pub state_lock: libc::pthread_spinlock_t,
+    // pub srq: *mut rxe_srq,
+    // pub scq: *mut rxe_cq,
+    // pub rcq: *mut rxe_cq,
+
+    // pub src_port: u16,
+
+    // pub pri_av: rxe_av,
+    // pub alt_av: rxe_av,
+
+    // pub mtu: c_uint,
+    // pub req: rxe_req_info,
+    // pub comp: rxe_comp_info,
+    // pub resp: rxe_resp_info,
+    // pub valid: c_uint,
+    // pub attr: rdma_sys::ibv_qp_attr,
+    // /* guard requester and completer */
+    // pub state_lock: libc::pthread_spinlock_t,
 }
+
+// keep same as rdma-core/kernel-headers/rdma/rdma_user_rxe.h
+// #[repr(C)]
+// #[derive(Clone, Copy)]
+// pub union rxe_av_gid_addr_union {
+//     pub _sockaddr_in: libc::sockaddr_in,
+//     pub _sockaddr_in6: libc::sockaddr_in6,
+// }
+
+// #[repr(C)]
+// #[derive(Clone, Copy)]
+// pub struct rxe_av {
+//     pub port_num : u8,
+//     pub network_type: u8,
+//     pub dmac: [u8;6],
+//     pub grh: rxe_global_route,
+//     pub sgid_addr: rxe_av_gid_addr_union,
+//     pub dgid_addr: rxe_av_gid_addr_union,
+// }
