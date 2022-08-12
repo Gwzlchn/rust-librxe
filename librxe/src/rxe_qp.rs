@@ -1,13 +1,14 @@
-use crate::rxe_av::rxe_init_av;
 use crate::rxe_hdr::bth_mask;
 use crate::rxe_pd::RxePd;
-use crate::rxe_verbs;
+use crate::{rxe_av::rxe_init_av, rxe_mr::RxeMr};
+use crate::{rxe_post_recv, rxe_post_send, rxe_verbs};
 use async_rdma::queue_pair::{QueuePairEndpoint, QueuePairInitAttr};
 use derivative::Derivative;
 use libc::c_int;
 use nix::Error;
 use rdma_sys::{
     ibv_access_flags, ibv_modify_qp, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state,
+    ibv_send_wr, ibv_sge,
 };
 use std::ptr::NonNull;
 use tracing::{debug, warn};
@@ -435,5 +436,70 @@ impl RxeQueuePair {
 
     pub fn qp_num(self: &Self) -> u32 {
         self.qpn
+    }
+
+    // post a single receive request
+    // use system call to kernel
+    #[inline]
+    pub fn post_receive(
+        &self,
+        mr: &RxeMr,
+        data_addr: *mut u8,
+        data_length: u32, // in bytes
+        wr_id: u64,
+    ) -> Result<(), nix::Error> {
+        let mut sge = ibv_sge {
+            addr: data_addr as u64,
+            length: data_length,
+            lkey: mr.lkey(),
+        };
+        let mut wr = rdma_sys::ibv_recv_wr {
+            wr_id: wr_id,
+            next: std::ptr::null::<rdma_sys::ibv_send_wr>() as *mut _,
+            sg_list: &mut sge as *mut _,
+            num_sge: 1,
+        };
+        let mut bad_wr: *mut rdma_sys::ibv_recv_wr =
+            std::ptr::null::<rdma_sys::ibv_recv_wr>() as *mut _;
+        let qp = self.as_ptr();
+        rxe_post_recv(qp, &mut wr as *mut _, &mut bad_wr as *mut _)
+    }
+
+    // post a single send request
+    // use system call to kernel
+    #[inline]
+    pub fn post_send(
+        &self,
+        mr: &RxeMr,
+        data_addr: *mut u8,
+        data_length: u32, // in bytes
+        wr_id: u64,
+    ) -> Result<(), nix::Error> {
+        let mut sge = ibv_sge {
+            addr: data_addr as u64,
+            length: data_length,
+            lkey: mr.lkey(),
+        };
+        let mut wr = unsafe {
+            ibv_send_wr {
+                wr_id: wr_id,
+                next: std::ptr::null::<rdma_sys::ibv_send_wr>() as *mut _,
+                sg_list: &mut sge as *mut _,
+                num_sge: 1,
+                opcode: rdma_sys::ibv_wr_opcode::IBV_WR_SEND,
+                send_flags: rdma_sys::ibv_send_flags::IBV_SEND_SIGNALED.0,
+                wr: std::mem::zeroed(),
+                qp_type: std::mem::zeroed(),
+                imm_data_invalidated_rkey_union: std::mem::zeroed(),
+                bind_mw_tso_union: std::mem::zeroed(),
+            }
+        };
+        let mut bad_wr: *mut rdma_sys::ibv_send_wr = std::ptr::null_mut::<rdma_sys::ibv_send_wr>();
+        let qp = self.as_ptr();
+        rxe_post_send(
+            qp,
+            &mut wr as *mut ibv_send_wr,
+            &mut bad_wr as *mut *mut ibv_send_wr,
+        )
     }
 }

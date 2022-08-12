@@ -1,10 +1,21 @@
 use nix::Error;
 use rdma_sys::{ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_wr_opcode};
-
-mod rxe_hdr;
-mod rxe_opcode;
-mod rxe_req;
-mod rxe_verbs;
+pub mod rxe_av;
+#[allow(warnings)]
+//pub mod rxe_comp;
+pub mod rxe_context;
+pub mod rxe_hdr;
+pub mod rxe_icrc;
+pub mod rxe_mr;
+pub mod rxe_net;
+pub mod rxe_opcode;
+pub mod rxe_pd;
+pub mod rxe_qp;
+// pub mod rxe_recv;
+// pub mod rxe_req;
+// pub mod rxe_resp;
+pub mod rxe_cq;
+pub mod rxe_verbs;
 
 pub fn rxe_post_send(
     ibqp: *mut rdma_sys::ibv_qp,
@@ -331,6 +342,13 @@ fn post_send_db(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+fn post_send_db_user_space(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
+    let rqp = librxe_sys::to_rqp(ibqp).expect("unable to find rxe_qp from ib qp");
+    let rqp = unsafe { &mut *rqp };
+    //rxe_req::rxe_requster(rqp)
+    todo!()
 }
 
 fn rxe_post_one_recv(

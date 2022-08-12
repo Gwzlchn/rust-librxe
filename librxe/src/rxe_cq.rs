@@ -3,7 +3,7 @@ use std::ptr::NonNull;
 use derivative::Derivative;
 use librxe_sys::rxe_cq;
 use nix::Error;
-use rdma_sys::{ibv_cq, ibv_create_cq};
+use rdma_sys::{ibv_cq, ibv_create_cq, ibv_poll_cq};
 
 use crate::rxe_context::RxeContext;
 
@@ -63,7 +63,32 @@ impl RxeCompletionQueue {
             max_cqe,
         })
     }
-    // TODO poll cq
+
+    #[inline]
+    pub fn poll<'c>(
+        &self,
+        completions: &'c mut [rdma_sys::ibv_wc],
+    ) -> Result<&'c mut [rdma_sys::ibv_wc], ()> {
+        // TODO: from http://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
+        //
+        //   One should consume Work Completions at a rate that prevents the CQ from being overrun
+        //   (hold more Work Completions than the CQ size). In case of an CQ overrun, the async
+        //   event `IBV_EVENT_CQ_ERR` will be triggered, and the CQ cannot be used anymore.
+        //
+        let n = unsafe {
+            ibv_poll_cq(
+                self.as_ptr(),
+                completions.len() as i32,
+                completions.as_mut_ptr(),
+            )
+        };
+
+        if n < 0 {
+            Err(())
+        } else {
+            Ok(&mut completions[0..n as usize])
+        }
+    }
 }
 
 unsafe impl Sync for RxeCompletionQueue {}
