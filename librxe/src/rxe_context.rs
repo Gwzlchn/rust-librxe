@@ -94,8 +94,8 @@ impl RxeContext {
             dev_attr: device_attr,
             port_attr: inner_port_attr,
             gid: gid,
-            qp_pool: HashMap::new(),
-            mr_pool: HashMap::new(),
+            qp_pool: HashMap::with_capacity(1024),
+            mr_pool: HashMap::with_capacity(1024),
         })
     }
 
