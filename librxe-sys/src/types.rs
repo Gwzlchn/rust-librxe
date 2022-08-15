@@ -1,4 +1,5 @@
 use crate::*;
+use std::fmt::Debug;
 use std::os::raw::{c_int, c_uint};
 
 // rxe_cq related union and struct types
@@ -193,20 +194,159 @@ pub struct rxe_qp {
 }
 
 // keep same as rdma-core/kernel-headers/rdma/rdma_user_rxe.h
-// #[repr(C)]
-// #[derive(Clone, Copy)]
-// pub union rxe_av_gid_addr_union {
-//     pub _sockaddr_in: libc::sockaddr_in,
-//     pub _sockaddr_in6: libc::sockaddr_in6,
-// }
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union rxe_av_gid_addr_union_t {
+    pub _sockaddr_in: libc::sockaddr_in,
+    pub _sockaddr_in6: libc::sockaddr_in6,
+}
 
-// #[repr(C)]
-// #[derive(Clone, Copy)]
-// pub struct rxe_av {
-//     pub port_num : u8,
-//     pub network_type: u8,
-//     pub dmac: [u8;6],
-//     pub grh: rxe_global_route,
-//     pub sgid_addr: rxe_av_gid_addr_union,
-//     pub dgid_addr: rxe_av_gid_addr_union,
-// }
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rxe_av {
+    pub port_num: u8,
+    pub network_type: u8,
+    pub dmac: [u8; 6],
+    pub grh: rxe_global_route,
+    pub sgid_addr: rxe_av_gid_addr_union_t,
+    pub dgid_addr: rxe_av_gid_addr_union_t,
+}
+
+impl Default for rxe_av_gid_addr_union_t {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+
+impl Default for rxe_av {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+
+impl Debug for rxe_av {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("rxe_av").finish() // TODO debug
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rxe_send_wr {
+    pub wr_id: u64,
+    pub num_sge: u32,
+    pub opcode: u32,
+    pub send_flags: u32,
+    pub ex: rxe_send_wr_ex_union_t,
+    pub wr: rxe_send_wr_wr_union_t,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union rxe_send_wr_ex_union_t {
+    pub imm_data: u32,
+    pub invalidate_rkey: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union rxe_send_wr_wr_union_t {
+    pub rdma: rxe_send_wr_ex_union_rdma_t,
+    pub atomic: rxe_send_wr_ex_union_atomic_t,
+    pub ud: rxe_send_wr_ex_union_ud_t,
+    pub mw: rxe_send_wr_ex_union_mw_t,
+    pub bindgen_union_field: [u64; 15usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct rxe_send_wr_ex_union_rdma_t {
+    pub remote_addr: u64,
+    pub rkey: u32,
+    pub reserved: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct rxe_send_wr_ex_union_atomic_t {
+    pub remote_addr: u64,
+    pub compare_add: u64,
+    pub swap: u64,
+    pub rkey: u32,
+    pub reserved: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct rxe_send_wr_ex_union_ud_t {
+    pub remote_qpn: u32,
+    pub remote_qkey: u32,
+    pub pkey_index: u16,
+    pub reserved: u16,
+    pub ah_num: u32,
+    pub pad: [u32; 4usize],
+    pub av: rxe_av,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct rxe_send_wr_ex_union_mw_t {
+    pub addr: u64,
+    pub length: u64,
+    pub mr_lkey: u32,
+    pub mw_rkey: u32,
+    pub rkey: u32,
+    pub access: u32,
+}
+
+impl Default for rxe_send_wr_ex_union_t {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+
+impl Default for rxe_send_wr {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+
+// rxe_send_wqe
+#[repr(C)]
+pub struct rxe_send_wqe {
+    pub wr: rxe_send_wr,
+    pub status: u32,
+    pub state: u32,
+    pub iova: u64,
+    pub mask: u32,
+    pub first_psn: u32,
+    pub last_psn: u32,
+    pub ack_length: u32,
+    pub ssn: u32,
+    pub has_rd_atomic: u32,
+    pub dma: rxe_dma_info,
+}
+
+impl Default for rxe_send_wqe {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}

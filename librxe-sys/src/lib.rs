@@ -9,8 +9,8 @@ use libc::*;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-mod queue;
-mod types;
+pub mod queue;
+pub mod types;
 
 pub use crate::queue::*;
 pub use crate::types::*;
@@ -75,6 +75,11 @@ pub fn to_rah(ibah: *mut rdma_sys::ibv_ah) -> Option<*mut rxe_ah> {
 #[inline]
 pub fn qp_type(qp: *const rxe_qp) -> rdma_sys::ibv_qp_type::Type {
     unsafe { (*qp).vqp.qp_union.qp.qp_type }
+}
+
+#[inline]
+pub fn qp_num(qp: *const rxe_qp) -> u32 {
+    unsafe { (*qp).vqp.qp_union.qp.qp_num }
 }
 
 #[inline]
