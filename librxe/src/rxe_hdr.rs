@@ -1,10 +1,20 @@
 #![allow(dead_code)]
+use std::cell::RefCell;
+use std::ptr::NonNull;
+use std::rc::Rc;
+
 use self::{aeth_mask::*, bth_mask::*, deth_mask::*, rdeth_mask::*};
 use crate::rxe_opcode::rxe_hdr_type::*;
 use crate::rxe_opcode::*;
+use crate::rxe_qp::RxeQueuePair;
 use bytes::BytesMut;
-#[derive(Debug, Clone)]
+
+#[derive(Clone)]
 pub struct RxePktInfo {
+    // qp may be none in receive raw packet
+    pub qp: Option<Rc<RefCell<RxeQueuePair>>>,
+    // rxe_send_wqe not derive clone trait
+    pub wqe: Option<NonNull<librxe_sys::rxe_send_wqe>>,
     pub hdr: BytesMut,   /* IBA packet buffer */
     pub mask: u32,       /* useful info about pkt */
     pub psn: u32,        /* bth psn of packet */
@@ -180,7 +190,9 @@ pub mod rxe_hdr_length {
 impl RxePktInfo {
     // use mtu as IBA buffer capacity
     #[inline]
-    pub fn new(
+    pub fn new_requester(
+        qp: Option<Rc<RefCell<RxeQueuePair>>>,
+        wqe: Option<NonNull<librxe_sys::rxe_send_wqe>>,
         mask: u32,
         psn: u32,
         pkey_index: u16,
@@ -190,6 +202,8 @@ impl RxePktInfo {
         mtu: u32,
     ) -> Self {
         RxePktInfo {
+            qp: qp,
+            wqe: wqe,
             hdr: BytesMut::zeroed(mtu as _),
             mask: mask,
             psn: psn,
@@ -228,6 +242,11 @@ impl RxePktInfo {
     #[inline]
     pub fn unsplit_iba_pkt(&mut self, to_unsplit: BytesMut) {
         self.hdr.unsplit(to_unsplit)
+    }
+
+    // get iba packet content
+    pub fn write_iba_bytes(&self) -> Vec<u8> {
+        self.hdr.to_vec()
     }
     #[inline]
     pub fn header_size(&self) -> usize {
@@ -756,6 +775,6 @@ mod tests {
     // Invalidate Extended Transport Header
 
     fn rxe_pkt_info_zerod() -> RxePktInfo {
-        RxePktInfo::new(0, 0, 0, 0, 0, 0, 1024)
+        RxePktInfo::new_requester(None, None, 0, 0, 0, 0, 0, 0, 1024)
     }
 }
