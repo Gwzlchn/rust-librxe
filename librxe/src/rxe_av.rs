@@ -1,15 +1,15 @@
-use crate::{rxe_pd::RxePd, rxe_verbs};
+use crate::{rxe_hdr::RxePktInfo, rxe_pd::RxePd, rxe_verbs};
 use async_rdma::gid::Gid;
 use librxe_sys::rxe_av;
-use rdma_sys::{ibv_ah_attr, ibv_gid, ibv_query_gid};
+use rdma_sys::{ibv_ah_attr, ibv_gid, ibv_qp_type, ibv_query_gid};
 use std::{mem::MaybeUninit, ptr::NonNull};
 
-#[derive(Clone)]
-pub struct RxeAddrHandler {
-    pub ibv_ah: rdma_sys::ibv_ah,
-    // pub av: librxe_sys::rxe_av,
-    pub ah_num: u32,
-}
+// #[derive(Clone)]
+// pub struct RxeAddrHandler {
+//     pub ibv_ah: rdma_sys::ibv_ah,
+//     pub av: librxe_sys::rxe_av,
+//     pub ah_num: u32,
+// }
 
 // true:  addr is ipv4
 // false: addr is ipv6
@@ -75,26 +75,40 @@ pub fn rxe_init_av(attr: &ibv_ah_attr, pd: NonNull<RxePd>, av: &mut rxe_av) {
         // SAFETY: ffi init
         Gid::from(unsafe { gid.assume_init() })
     };
-    av.port_num = attr.port_num;
     unsafe {
         let src_grh = std::mem::transmute::<rdma_sys::ibv_global_route, librxe_sys::rxe_global_route>(
             attr.grh,
         );
+        // fill grh info
         std::ptr::copy(&src_grh, &mut av.grh, 1);
+        // fill ip info
         let raw_ipaddr = libc::in6_addr {
             s6_addr: attr.grh.dgid.raw,
         };
         if ipv6_addr_v4mapped(&raw_ipaddr) {
             av.network_type = rxe_verbs::RXE_NETWORK_TYPE_IPV4;
-            gid_to_ipv4(sgid.as_ref(), av.sgid_addr._sockaddr_in.as_mut());
-            gid_to_ipv4(&attr.grh.dgid, av.dgid_addr._sockaddr_in.as_mut());
+            gid_to_ipv4(sgid.as_ref(), &mut av.sgid_addr._sockaddr_in);
+            gid_to_ipv4(&attr.grh.dgid, &mut av.dgid_addr._sockaddr_in);
         } else {
             av.network_type = rxe_verbs::RXE_NETWORK_TYPE_IPV6;
-            gid_to_ipv6(sgid.as_ref(), av.sgid_addr._sockaddr_in6.as_mut());
-            gid_to_ipv6(&attr.grh.dgid, av.dgid_addr._sockaddr_in6.as_mut());
+            gid_to_ipv6(sgid.as_ref(), &mut av.sgid_addr._sockaddr_in6);
+            gid_to_ipv6(&attr.grh.dgid, &mut av.dgid_addr._sockaddr_in6);
         }
     }
     // ignore mac address
+}
+
+// TODO: how to return a reference?
+pub fn rxe_get_av(pkt: &RxePktInfo) -> Option<rxe_av> {
+    if pkt.qp.is_none() {
+        return None;
+    }
+    let qp = pkt.qp.as_ref().unwrap().borrow();
+    if qp.qp_type() == ibv_qp_type::IBV_QPT_RC || qp.qp_type() == ibv_qp_type::IBV_QPT_UC {
+        return unsafe { Some(qp.pri_av) };
+    }
+    // TODO if qp type is RD/UD
+    return None;
 }
 
 #[test]
