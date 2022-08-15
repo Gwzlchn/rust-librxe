@@ -47,10 +47,12 @@ impl RxePd {
         qp_init_attr: &mut QueuePairInitAttr,
     ) -> Result<RxeQueuePair, Error> {
         let pd_ptr = NonNull::new(self as *mut _).unwrap();
-        let qp = RxeQueuePair::create_qp(pd_ptr, qp_init_attr).unwrap();
+        let mut qp = RxeQueuePair::create_qp(pd_ptr, qp_init_attr).unwrap();
         let qpn = qp.qp_num();
         let qp_cell = Rc::new(RefCell::new(qp.clone()));
         unsafe {
+            // init qp state lock
+            libc::pthread_spin_init(&mut qp.state_lock, libc::PTHREAD_PROCESS_SHARED);
             self.ctx.as_mut().qp_pool.insert(qpn, qp_cell);
         }
         Ok(qp)

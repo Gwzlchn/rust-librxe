@@ -75,8 +75,8 @@ pub const RXE_WR_OPCODE_INFO: [[rxe_wr_mask::Type; WR_MAX_QPT]; WR_MAX_OPCODE as
 
 /// Get WR mask by current wqe opcode and qp type
 #[inline]
-pub fn wr_opcode_mask(qp: &librxe_sys::rxe_qp, opcode: u32) -> u32 {
-    RXE_WR_OPCODE_INFO[opcode as usize][librxe_sys::qp_type(qp) as usize]
+pub fn wr_opcode_mask(qp_type: rdma_sys::ibv_qp_type::Type, opcode: u32) -> u32 {
+    RXE_WR_OPCODE_INFO[opcode as usize][qp_type as usize]
 }
 pub mod rxe_hdr_type {
     pub type Type = u8;

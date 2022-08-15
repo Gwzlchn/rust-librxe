@@ -1,3 +1,5 @@
+use rdma_sys::ibv_mtu;
+
 #[macro_export]
 macro_rules! BIT {
     ($nr:expr) => {{
@@ -38,16 +40,16 @@ pub const IB_DEFAULT_PKEY_FULL: u16 = 0xFFFF;
 pub const RXE_ROCE_V2_SPORT: u16 = 0xC000;
 
 // defination from linux-kernel/upstream-kernel/include/rdma/ib_verbs.h
-#[inline]
-pub fn ibv_mtu_enum_to_u32(mtu: rdma_sys::ibv_mtu::Type) -> u32 {
-    match mtu {
-        IBV_MTU_256 => 256,
-        IBV_MTU_512 => 512,
-        IBV_MTU_1024 => 1024,
-        IBV_MTU_2048 => 2048,
-        IBV_MTU_4096 => 4096,
-    }
-}
+const MAX_MTU_ARRAY_ENTRY: usize = 6;
+pub const ibv_mtu_enum_to_u32: [u32; MAX_MTU_ARRAY_ENTRY] = {
+    let mut mtu_arr = [0u32; MAX_MTU_ARRAY_ENTRY];
+    mtu_arr[ibv_mtu::IBV_MTU_256 as usize] = 256;
+    mtu_arr[ibv_mtu::IBV_MTU_512 as usize] = 512;
+    mtu_arr[ibv_mtu::IBV_MTU_1024 as usize] = 1024;
+    mtu_arr[ibv_mtu::IBV_MTU_2048 as usize] = 2048;
+    mtu_arr[ibv_mtu::IBV_MTU_4096 as usize] = 4096;
+    mtu_arr
+};
 
 pub const RXE_NETWORK_TYPE_IPV4: u8 = 1;
 pub const RXE_NETWORK_TYPE_IPV6: u8 = 2;

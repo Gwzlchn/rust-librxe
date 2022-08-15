@@ -10,6 +10,7 @@ use rdma_sys::{
     ibv_access_flags, ibv_modify_qp, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state,
     ibv_send_wr, ibv_sge,
 };
+use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::NonNull;
 use tracing::{debug, warn};
 
@@ -111,16 +112,18 @@ pub struct RxeQueuePair {
     pub rcq: NonNull<librxe_sys::rxe_cq>,
 
     pub src_port: u16,
+    // socket file descriptor
+    pub sock_fd: libc::c_int,
 
-    pub pri_av: NonNull<librxe_sys::rxe_av>,
-    pub alt_av: NonNull<librxe_sys::rxe_av>,
+    pub pri_av: librxe_sys::rxe_av,
+    pub alt_av: librxe_sys::rxe_av,
 
     pub mtu: u32,
     pub req: RxeReqInfo,
     pub comp: RxeCompInfo,
     pub resp: RxeRespInfo,
     /* guard requester and completer */
-    // pub state_lock: spin::mutex::Mutex<u32>,
+    pub state_lock: libc::pthread_spinlock_t,
 }
 
 impl RxeQueuePair {
@@ -151,19 +154,22 @@ impl RxeQueuePair {
         let rqp_ptr = NonNull::new(rqp).unwrap();
         let qpn = librxe_sys::qp_num(rqp);
 
-        let mut attr = unsafe {
-            let mut attr = std::mem::zeroed::<rdma_sys::ibv_qp_attr>();
+        let mut attr_ptr = unsafe {
+            NonNull::new(alloc(Layout::new::<rdma_sys::ibv_qp_attr>()) as *mut rdma_sys::ibv_qp_attr).unwrap()
+        };
+        unsafe {
             rdma_sys::ibv_query_qp(
                 ibv_qp.as_ptr(),
-                &mut attr,
+                attr_ptr.as_mut(),
                 rdma_sys::ibv_qp_attr_mask::IBV_QP_STATE.0 as _,
                 &mut qp_init_attr.qp_init_attr_inner,
             );
-            attr
-        };
-        let attr_ptr = NonNull::new(&mut attr as *mut rdma_sys::ibv_qp_attr).unwrap();
+        }
         let src_port = ((fxhash::hash32(&qpn) as u16) & 0x3FFF) + rxe_verbs::RXE_ROCE_V2_SPORT;
-        let mtu = rxe_verbs::ibv_mtu_enum_to_u32(attr.path_mtu as u32);
+        let sock_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_RAW) };
+        assert!(sock_fd > 0, "create qp socket failed");
+        let mtu = unsafe { rxe_verbs::ibv_mtu_enum_to_u32[attr_ptr.as_ref().path_mtu as usize] };
+
         let mut req = RxeReqInfo::default();
         req.wqe_index = unsafe { librxe_sys::load_producer_index((*rqp).sq.queue) };
 
@@ -175,10 +181,6 @@ impl RxeQueuePair {
             NonNull::new(librxe_sys::to_rcq(qp_init_attr.qp_init_attr_inner.send_cq).unwrap())
                 .unwrap();
 
-        let mut priv_av = unsafe { std::mem::zeroed::<librxe_sys::rxe_av>() };
-        let mut alt_av = unsafe { std::mem::zeroed::<librxe_sys::rxe_av>() };
-        let priv_av_ptr = NonNull::new(&mut priv_av as *mut librxe_sys::rxe_av).unwrap();
-        let alt_av_ptr = NonNull::new(&mut alt_av as *mut librxe_sys::rxe_av).unwrap();
         Ok(RxeQueuePair {
             pd: pd,
             inner_qp: rqp_ptr,
@@ -188,13 +190,16 @@ impl RxeQueuePair {
             scq: scq,
             rcq: rcq,
             src_port: src_port,
-            pri_av: priv_av_ptr,
-            alt_av: alt_av_ptr,
+            sock_fd: sock_fd,
+            pri_av: librxe_sys::rxe_av::default(),
+            alt_av: librxe_sys::rxe_av::default(),
             mtu: mtu,
             req: req,
             comp: RxeCompInfo::default(),
             resp: RxeRespInfo::default(),
             valid: true,
+            // init state lock outside
+            state_lock: 0,
         })
     }
 
@@ -233,13 +238,11 @@ impl RxeQueuePair {
         }
 
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_AV) != ibv_qp_attr_mask(0) {
-            unsafe {
-                rxe_init_av(&attr.ah_attr, self.pd, self.pri_av.as_mut());
-            }
+            rxe_init_av(&attr.ah_attr, self.pd, &mut self.pri_av);
         }
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_ALT_PATH) != ibv_qp_attr_mask(0) {
             unsafe {
-                rxe_init_av(&attr.alt_ah_attr, self.pd, self.alt_av.as_mut());
+                rxe_init_av(&attr.alt_ah_attr, self.pd, &mut self.alt_av);
                 self.attr.as_mut().alt_port_num = attr.alt_port_num;
                 self.attr.as_mut().alt_pkey_index = attr.alt_pkey_index;
                 self.attr.as_mut().alt_timeout = attr.alt_timeout;
@@ -249,8 +252,9 @@ impl RxeQueuePair {
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_PATH_MTU) != ibv_qp_attr_mask(0) {
             unsafe {
                 self.attr.as_mut().path_mtu = attr.path_mtu;
-                self.mtu = rxe_verbs::ibv_mtu_enum_to_u32(attr.path_mtu as u32);
+                self.mtu = rxe_verbs::ibv_mtu_enum_to_u32[attr.path_mtu as usize];
             }
+            debug!("QP#{} set path mtu {}", self.qpn, self.mtu);
         }
 
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_TIMEOUT) != ibv_qp_attr_mask(0) {
@@ -363,7 +367,7 @@ impl RxeQueuePair {
         flag: ibv_access_flags,
         port_num: u8,
     ) -> (ibv_qp_attr, ibv_qp_attr_mask) {
-        let mut attr = unsafe { std::mem::zeroed::<ibv_qp_attr>() };
+        let mut attr = ibv_qp_attr::default();
         attr.pkey_index = 0;
         attr.port_num = port_num;
         attr.qp_state = ibv_qp_state::IBV_QPS_INIT;
@@ -385,7 +389,7 @@ impl RxeQueuePair {
         port_num: u8,
         gid_index: u8,
     ) -> (ibv_qp_attr, ibv_qp_attr_mask) {
-        let mut attr = unsafe { std::mem::zeroed::<ibv_qp_attr>() };
+        let mut attr = ibv_qp_attr::default();
         attr.qp_state = ibv_qp_state::IBV_QPS_RTR;
         attr.path_mtu = unsafe { self.pd.as_ref().ctx.as_ref().get_active_mtu() };
         attr.dest_qp_num = remote.qp_num;
@@ -438,6 +442,19 @@ impl RxeQueuePair {
         self.qpn
     }
 
+    pub fn qp_type(&self) -> rdma_sys::ibv_qp_type::Type {
+        librxe_sys::qp_type(self.inner_qp.as_ptr())
+    }
+    /// get send queue buffer pointer
+    pub fn sq_queue(&self) -> *mut librxe_sys::rxe_queue_buf {
+        unsafe { (*self.inner_qp.as_ptr()).sq.queue }
+    }
+
+    /// get receive queue buffer pointer
+    pub fn rq_queue(&self) -> *mut librxe_sys::rxe_queue_buf {
+        unsafe { (*self.inner_qp.as_ptr()).rq.queue }
+    }
+
     // post a single receive request
     // use system call to kernel
     #[inline]
@@ -469,11 +486,12 @@ impl RxeQueuePair {
     // use system call to kernel
     #[inline]
     pub fn post_send(
-        &self,
+        &mut self,
         mr: &RxeMr,
         data_addr: *mut u8,
         data_length: u32, // in bytes
         wr_id: u64,
+        userspace_doorbell: bool,
     ) -> Result<(), nix::Error> {
         let mut sge = ibv_sge {
             addr: data_addr as u64,
@@ -500,6 +518,12 @@ impl RxeQueuePair {
             qp,
             &mut wr as *mut ibv_send_wr,
             &mut bad_wr as *mut *mut ibv_send_wr,
+            userspace_doorbell,
         )
+        .unwrap();
+        if userspace_doorbell {
+            self.rxe_requester()?
+        }
+        Ok(())
     }
 }
