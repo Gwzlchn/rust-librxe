@@ -22,7 +22,7 @@ pub struct RxeContext {
     // resource pool
     // Queue Pair Pool, key = qpn, val = qp
     pub qp_pool: HashMap<u32, Rc<RefCell<RxeQueuePair>>>,
-    // Memory Region Pool, key = rkey, val = qp
+    // Memory Region Pool, key = mr index(rket >> 8), val = qp
     pub mr_pool: HashMap<u32, Rc<RefCell<RxeMr>>>,
     // Memory Window Pool, key = rkey,val=mw
     // Address Handler Pool, key=ah_num, val= ah
@@ -140,14 +140,14 @@ impl RxeContext {
         self.qp_pool.get(&qpn)
     }
 
-    pub fn rxe_pool_add_mr(&mut self, rkey: u32, mr: Rc<RefCell<RxeMr>>) {
-        self.mr_pool.insert(rkey, mr);
+    pub fn rxe_pool_add_mr(&mut self, index: u32, mr: Rc<RefCell<RxeMr>>) {
+        self.mr_pool.insert(index, mr);
     }
     pub fn rxe_pool_count_mr(&self) -> usize {
         self.mr_pool.len()
     }
-    pub fn rxe_pool_get_mr(&self, rkey: u32) -> Option<&Rc<RefCell<RxeMr>>> {
-        self.mr_pool.get(&rkey)
+    pub fn rxe_pool_get_mr(&self, index: u32) -> Option<&Rc<RefCell<RxeMr>>> {
+        self.mr_pool.get(&index)
     }
 }
 
