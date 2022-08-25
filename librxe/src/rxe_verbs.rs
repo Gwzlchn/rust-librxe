@@ -7,6 +7,8 @@ macro_rules! BIT {
     }};
 }
 
+// defination from kernel/drivers/infiniband/sw/rxe/rxe_verbs.h
+
 ///Return >0 if psn_a > psn_b;
 ///	      =0 if psn_a == psn_b;
 ///	      <0 if psn_a < psn_b
@@ -16,7 +18,14 @@ pub fn psn_compare(psn_a: u32, psn_b: u32) -> i32 {
     let diff: i32 = (psn_a as i32 - psn_b as i32) << 8;
     diff
 }
-#[repr(C)]
+
+#[inline]
+pub fn pkey_match(key1: u16, key2: u16) -> bool {
+    return ((key1 & 0x7fff) != 0)
+        && ((key1 & 0x7fff) == (key2 & 0x7fff))
+        && ((key1 & 0x8000) != 0 || (key2 & 0x8000) != 0);
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum WqeState {
     WqeStatePosted,
@@ -26,10 +35,51 @@ pub enum WqeState {
     WqeStateError,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum RxeMrState {
+    RxeMrStateInvalid,
+    RxeMrStateFree,
+    RxeMrStateValid,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RxeMrCopyDir {
     RxeToMrObj,
     RxeFromMrObj,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum RxeMrLookupType {
+    RxeLookupLocal,
+    RxeLookupRemote,
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub enum RdatmResState {
+    #[default]
+    RdatmResStateNext,
+    RdatmResStateNew,
+    RdatmResStateReplay,
+}
+
+// defination from rdma-core/libibverbs/driver.h
+#[derive(Debug, Clone, Copy)]
+pub enum IbvMrType {
+    IbvMrTypeMr,
+    IbvMrTypeNullMr,
+    IbvMrTypeImportedMr,
+    IbvMrTypeDmaBufMr,
+}
+
+// defination from upstream-kernel/include/rdma/ib_verbs.h
+#[derive(Debug, Clone, Copy)]
+pub enum IbMrType {
+    IbMrTypeMemReg,
+    IbMrTypeSgGaps,
+    IbMrTypeDm,
+    // memory region that is used for the user-space application
+    IbMrTypeUser,
+    IbMrTypeDma,
+    IbMrTypeIntegrity,
 }
 
 // defination from kernel/include/rdma/ib_mad.h
@@ -50,6 +100,7 @@ pub const ibv_mtu_enum_to_u32: [u32; MAX_MTU_ARRAY_ENTRY] = {
     mtu_arr[ibv_mtu::IBV_MTU_4096 as usize] = 4096;
     mtu_arr
 };
+pub const IB_MULTICAST_QPN: u32 = 0xffffff;
 
 pub const RXE_NETWORK_TYPE_IPV4: u8 = 1;
 pub const RXE_NETWORK_TYPE_IPV6: u8 = 2;

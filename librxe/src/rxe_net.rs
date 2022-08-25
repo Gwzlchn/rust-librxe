@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::mem::size_of;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 use crate::rxe_hdr::RxePktInfo;
@@ -8,7 +7,7 @@ use crate::rxe_opcode::{rxe_hdr_mask, RXE_OPCODE_INFO};
 use crate::rxe_qp::{RxeQpState, RxeQueuePair};
 use crate::rxe_verbs;
 use bytes::BytesMut;
-use etherparse::UdpHeader;
+use etherparse::{IpHeader::*, PacketHeaders, TransportHeader::*, UdpHeader};
 use nix::sys::socket::{self, MsgFlags};
 use nix::Error;
 use tracing::{debug, info, warn};
@@ -21,6 +20,7 @@ impl RxePktInfo {
         let udp_hdr = UdpHeader::from_slice(udp_skb).unwrap();
         let iba_paylen = udp_hdr.0.length - (std::mem::size_of::<UdpHeader>() as u16);
         let mut pkt_info = RxePktInfo {
+            rxe: None,
             qp: None,
             wqe: None,
             hdr: BytesMut::from(udp_hdr.1),
@@ -58,8 +58,10 @@ impl RxePktInfo {
 
 pub(crate) const ROCE_V2_UDP_DPORT: u16 = 4791;
 #[repr(C)]
+#[derive(Default, Clone)]
 pub struct RxeSkb {
     pub pkt_info: Rc<RefCell<RxePktInfo>>,
+    // use RXE_NETWORK_TYPE_IPV4 and RXE_NETWORK_TYPE_IPV6
     pub protocol: u8,
     //pub eth_hdr: etherparse::Ethernet2Header,
     pub ipv4_hdr: etherparse::Ipv4Header,
@@ -150,7 +152,53 @@ impl RxeSkb {
             u16::from_be(self.udp_hdr.destination_port),
         );
 
-        debug!("destination address {:?}", dst_addr);
+        debug!("ip pkt {:#02X?}", ip_pkt);
+        unsafe {
+            crate::global_ip_pkt_out = ip_pkt.to_vec();
+        }
         socket::sendto(sock, &ip_pkt, &dst_addr, MsgFlags::empty()).unwrap();
     }
+    pub fn rxe_udp_encap_recv(recv_buf: Vec<u8>) -> Self {
+        let mut pkt_info = RxePktInfo::default();
+        let mut skb = RxeSkb::default();
+        let parsed = PacketHeaders::from_ip_slice(&recv_buf).unwrap();
+        match parsed.ip {
+            Some(Version4(value, _)) => {
+                skb.protocol = rxe_verbs::RXE_NETWORK_TYPE_IPV4;
+                skb.ipv4_hdr = value;
+            }
+            Some(Version6(value, _)) => {
+                skb.protocol = rxe_verbs::RXE_NETWORK_TYPE_IPV6;
+                skb.ipv6_hdr = value;
+            }
+            None => {}
+        }
+        match parsed.transport {
+            Some(Udp(value)) => {
+                skb.udp_hdr = value;
+            }
+            _ => {}
+        }
+        pkt_info.hdr = BytesMut::from(parsed.payload);
+        pkt_info.port_num = 1;
+        pkt_info.mask = rxe_hdr_mask::RXE_GRH_MASK;
+        pkt_info.paylen = skb.udp_hdr.length - skb.udp_hdr.header_len() as u16;
+        skb.pkt_info = Rc::new(RefCell::new(pkt_info.clone()));
+        skb
+    }
+}
+
+/// compare two slices
+pub fn compare<T: Ord>(a: &[T], b: &[T]) -> std::cmp::Ordering {
+    let mut iter_b = b.iter();
+    for v in a {
+        match iter_b.next() {
+            Some(w) => match v.cmp(w) {
+                std::cmp::Ordering::Equal => continue,
+                ord => return ord,
+            },
+            None => break,
+        }
+    }
+    return a.len().cmp(&b.len());
 }

@@ -1,5 +1,6 @@
 use crate::rxe_hdr::bth_mask;
 use crate::rxe_pd::RxePd;
+use crate::rxe_verbs::RdatmResState;
 use crate::{rxe_av::rxe_init_av, rxe_mr::RxeMr};
 use crate::{rxe_post_recv, rxe_post_send, rxe_verbs};
 use async_rdma::queue_pair::{QueuePairEndpoint, QueuePairInitAttr};
@@ -10,8 +11,10 @@ use rdma_sys::{
     ibv_access_flags, ibv_modify_qp, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state,
     ibv_send_wr, ibv_sge,
 };
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{alloc, Layout};
+use std::cell::RefCell;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use tracing::{debug, warn};
 
 pub struct RxeRq {
@@ -49,7 +52,7 @@ pub struct RxeReqInfo {
     pub psn: u32,
     #[derivative(Default(value = "-1"))]
     pub opcode: c_int,
-    pub rd_atomic: c_int, // as atomic_int
+    pub rd_atomic: u8, // as atomic_int
     pub wait_fence: c_int,
     pub need_rd_atomic: c_int,
     pub wait_psn: c_int,
@@ -72,6 +75,28 @@ pub struct RxeCompInfo {
 }
 
 #[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct RespResReadInfo {
+    pub va_org: u64,
+    pub rkey: u32,
+    pub length: u32,
+    pub va: u64,
+    pub resid: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct RespRes {
+    pub resp_type: u32,
+    pub replay: u32,
+    pub first_psn: u32,
+    pub last_psn: u32,
+    pub state: RdatmResState,
+    // TODO atimoc
+    pub read: RespResReadInfo,
+}
+
+#[repr(C)]
 #[derive(Clone, Derivative)]
 #[derivative(Default)]
 pub struct RxeRespInfo {
@@ -79,14 +104,15 @@ pub struct RxeRespInfo {
     pub msn: u32,
     pub psn: u32,
     pub ack_psn: u32,
+    #[derivative(Default(value = "-1"))]
     pub opcode: c_int,
     pub drop_msg: c_int,
+    pub goto_error: c_int,
     pub sent_psn_nak: c_int,
     pub status: rdma_sys::ibv_wc_status::Type,
     pub aeth_syndrome: u8,
     // receive only
-    #[derivative(Default(value = "NonNull::dangling()"))]
-    pub wqe: NonNull<librxe_sys::rxe_recv_wqe>,
+    pub wqe: Option<NonNull<librxe_sys::rxe_recv_wqe>>,
     // RDMA read/ atomic only
     pub va: u64,
     pub offset: u64,
@@ -94,8 +120,14 @@ pub struct RxeRespInfo {
     pub rkey: u32,
     pub length: u32,
     pub atomic_orig: u64,
-    // SRQ only
-    //pub srq_wqe: rxe_resp_srq_wqe,
+    pub mr: Option<Rc<RefCell<RxeMr>>>,
+    // ingored SRQ
+
+    // responder resources. It's a circular list.
+    pub resources: Vec<RespRes>,
+    pub res_head: usize,
+    pub res_tail: usize,
+    pub res: Option<Rc<RefCell<RespRes>>>,
 }
 
 #[derive(Clone)]
@@ -107,9 +139,9 @@ pub struct RxeQueuePair {
     pub attr: NonNull<rdma_sys::ibv_qp_attr>,
 
     pub valid: bool,
-    pub srq: NonNull<librxe_sys::rxe_srq>,
-    pub scq: NonNull<librxe_sys::rxe_cq>,
-    pub rcq: NonNull<librxe_sys::rxe_cq>,
+    pub srq: Option<NonNull<librxe_sys::rxe_srq>>,
+    pub scq: NonNull<librxe_sys::rxe_cq>, // maybe use RxeCq would be better
+    pub rcq: NonNull<librxe_sys::rxe_cq>, // maybe use RxeCq would be better
 
     pub src_port: u16,
     // socket file descriptor
@@ -166,8 +198,25 @@ impl RxeQueuePair {
             );
         }
         let src_port = ((fxhash::hash32(&qpn) as u16) & 0x3FFF) + rxe_verbs::RXE_ROCE_V2_SPORT;
-        let sock_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_RAW) };
-        assert!(sock_fd > 0, "create qp socket failed");
+
+        let sock_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_UDP) };
+        if sock_fd < 0 {
+            panic!("create raw socket failed");
+        }
+        unsafe {
+            let on = 1;
+            let ret = libc::setsockopt(
+                sock_fd,
+                libc::IPPROTO_IP,
+                libc::IP_HDRINCL,
+                &on as *const _ as *const libc::c_void,
+                std::mem::size_of_val(&on) as libc::socklen_t,
+            );
+            if ret < 0 {
+                panic!("setting IP_HDRINCL to raw socket failed");
+            }
+        }
+
         let mtu = unsafe { rxe_verbs::ibv_mtu_enum_to_u32[attr_ptr.as_ref().path_mtu as usize] };
 
         let mut req = RxeReqInfo::default();
@@ -186,7 +235,7 @@ impl RxeQueuePair {
             inner_qp: rqp_ptr,
             qpn: qpn,
             attr: attr_ptr,
-            srq: NonNull::dangling(),
+            srq: None,
             scq: scq,
             rcq: rcq,
             src_port: src_port,
@@ -212,6 +261,34 @@ impl RxeQueuePair {
         if errno != 0_i32 {
             return Err(Error::last());
         }
+        if attr_mask & ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC != ibv_qp_attr_mask(0) {
+            let max_rd_atomic = if attr.max_rd_atomic != 0 {
+                attr.max_rd_atomic.next_power_of_two()
+            } else {
+                0
+            };
+            unsafe {
+                self.attr.as_mut().max_rd_atomic = max_rd_atomic;
+            }
+            self.req.rd_atomic = max_rd_atomic; // need atomic_set here
+        }
+
+        if attr_mask & ibv_qp_attr_mask::IBV_QP_MAX_DEST_RD_ATOMIC != ibv_qp_attr_mask(0) {
+            let max_dest_rd_atomic = if attr.max_dest_rd_atomic != 0 {
+                attr.max_dest_rd_atomic.next_power_of_two()
+            } else {
+                0
+            };
+            unsafe {
+                self.attr.as_mut().max_dest_rd_atomic = max_dest_rd_atomic;
+            }
+            self.resp.res_head = 0;
+            self.resp.res_tail = 0;
+            self.resp
+                .resources
+                .resize(max_dest_rd_atomic as usize, RespRes::default());
+        }
+
         // modify userspace rxe qp
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_CUR_STATE) != ibv_qp_attr_mask(0) {
             unsafe { self.attr.as_mut().cur_qp_state = attr.qp_state };
@@ -362,6 +439,24 @@ impl RxeQueuePair {
         Ok(())
     }
 
+    pub fn set_error_state(&mut self) {
+        self.req.state = RxeQpState::QP_STATE_ERROR;
+        self.resp.state = RxeQpState::QP_STATE_ERROR;
+        unsafe {
+            self.attr.as_mut().qp_state = ibv_qp_state::IBV_QPS_ERR;
+        }
+        // TODO should do drain work and packet queues here
+        // like rxe_qp_error() in rxe_qp.c
+    }
+
+    #[inline]
+    pub fn rxe_advance_resp_resource(&mut self) {
+        self.resp.res_head += 1;
+        if unsafe { self.resp.res_head == self.attr.as_ref().max_dest_rd_atomic as usize } {
+            self.resp.res_head = 0;
+        }
+    }
+
     pub fn generate_modify_to_init_attr(
         &self,
         flag: ibv_access_flags,
@@ -440,6 +535,18 @@ impl RxeQueuePair {
 
     pub fn qp_num(self: &Self) -> u32 {
         self.qpn
+    }
+
+    pub fn qkey(self: &Self) -> u32 {
+        unsafe { self.attr.as_ref().qkey }
+    }
+
+    pub fn port_num(self: &Self) -> u8 {
+        unsafe { self.attr.as_ref().port_num }
+    }
+
+    pub fn attr_ref(&self) -> &rdma_sys::ibv_qp_attr {
+        unsafe { self.attr.as_ref() }
     }
 
     pub fn qp_type(&self) -> rdma_sys::ibv_qp_type::Type {
