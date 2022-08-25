@@ -4,13 +4,16 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 
 use self::{aeth_mask::*, bth_mask::*, deth_mask::*, rdeth_mask::*};
+use crate::rxe_context::RxeContext;
 use crate::rxe_opcode::rxe_hdr_type::*;
 use crate::rxe_opcode::*;
 use crate::rxe_qp::RxeQueuePair;
 use bytes::BytesMut;
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub struct RxePktInfo {
+    // device that owns packet, valid in recv packet
+    pub rxe: Option<Rc<RefCell<RxeContext>>>,
     // qp may be none in receive raw packet
     pub qp: Option<Rc<RefCell<RxeQueuePair>>>,
     // rxe_send_wqe not derive clone trait
@@ -202,6 +205,7 @@ impl RxePktInfo {
         mtu: u32,
     ) -> Self {
         RxePktInfo {
+            rxe: None,
             qp: qp,
             wqe: wqe,
             hdr: BytesMut::zeroed(mtu as _),
@@ -232,6 +236,15 @@ impl RxePktInfo {
             - (RXE_OPCODE_INFO[self.opcode as usize].offset[RXE_PAYLOAD as usize] as usize)
             - (self.bth_pad() as usize)
             - RXE_ICRC_SIZE as usize
+    }
+    #[inline]
+    pub fn payload_addr(&mut self) -> *mut u8 {
+        unsafe {
+            self.hdr
+                .as_mut()
+                .as_mut_ptr()
+                .add(RXE_OPCODE_INFO[self.opcode as usize].offset[RXE_PAYLOAD as usize] as usize)
+        }
     }
     // create new buffer view points by offset
     #[inline]
@@ -566,7 +579,7 @@ impl RxePktInfo {
     }
     // Ack Extended Transport Header
     #[inline]
-    pub fn aeth_smsn(&self) -> u32 {
+    pub fn aeth_msn(&self) -> u32 {
         let aeth = self.get_iba_hdr::<RxeAeth>(RXE_AETH as usize);
         u32::from_be(aeth.smsn) & AETH_MSN_MASK
     }
@@ -576,15 +589,16 @@ impl RxePktInfo {
         ((AETH_SYN_MASK & u32::from_be(aeth.smsn)) >> 24) as u8
     }
     #[inline]
-    pub fn aeth_set_smsn(&mut self, smsn: u32) {
-        let aeth = self.get_mut_iba_hdr::<RxeAeth>(RXE_AETH as usize);
-        aeth.smsn = smsn.to_be()
-    }
-    #[inline]
     pub fn aeth_set_syn(&mut self, syn: u8) {
         let aeth = self.get_mut_iba_hdr::<RxeAeth>(RXE_AETH as usize);
         let smsn: u32 = u32::from_be(aeth.smsn);
         aeth.smsn = ((AETH_SYN_MASK & ((syn as u32) << 24)) | (!AETH_SYN_MASK & smsn)).to_be();
+    }
+    #[inline]
+    pub fn aeth_set_msn(&mut self, msn: u32) {
+        let aeth = self.get_mut_iba_hdr::<RxeAeth>(RXE_AETH as usize);
+        let smsn = u32::from_be(aeth.smsn);
+        aeth.smsn = ((AETH_MSN_MASK & (msn as u32)) | (!AETH_MSN_MASK & smsn)).to_be();
     }
     // Atomic Ack Extended Transport Header
     #[inline]
@@ -761,12 +775,12 @@ mod tests {
         let hdr_len = rxe_pkt.get_iba_hdr_len();
         rxe_pkt.set_iba_pkt_len(hdr_len);
         let smsn = 1;
-        rxe_pkt.aeth_set_smsn(smsn);
+        rxe_pkt.aeth_set_msn(smsn);
         rxe_pkt.aeth_set_syn(aeth_syndrome::AETH_ACK_UNLIMITED);
         let golden_from_pcap = [0x1f, 00, 00, 0x01];
         assert_eq!(rxe_pkt.hdr.len(), (RXE_BTH_BYTES + RXE_AETH_BYTES) as _);
         assert_eq!(rxe_pkt.hdr.to_vec()[RXE_BTH_BYTES as _..], golden_from_pcap);
-        assert_eq!(smsn, rxe_pkt.aeth_smsn());
+        assert_eq!(smsn, rxe_pkt.aeth_msn());
         assert_eq!(aeth_syndrome::AETH_ACK_UNLIMITED, rxe_pkt.aeth_syn());
     }
     // TODO:
