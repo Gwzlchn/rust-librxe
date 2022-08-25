@@ -1,9 +1,11 @@
 use nix::Error;
 use rdma_sys::{ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_wr_opcode};
+use rxe_qp::RxeQueuePair;
 pub mod rxe_av;
 #[allow(warnings)]
 //pub mod rxe_comp;
 pub mod rxe_context;
+pub mod rxe_cq;
 pub mod rxe_hdr;
 pub mod rxe_icrc;
 pub mod rxe_mr;
@@ -11,16 +13,16 @@ pub mod rxe_net;
 pub mod rxe_opcode;
 pub mod rxe_pd;
 pub mod rxe_qp;
-// pub mod rxe_recv;
-// pub mod rxe_req;
-// pub mod rxe_resp;
-pub mod rxe_cq;
+pub mod rxe_recv;
+pub mod rxe_req;
+pub mod rxe_resp;
 pub mod rxe_verbs;
 
 pub fn rxe_post_send(
     ibqp: *mut rdma_sys::ibv_qp,
     wr_list: *mut rdma_sys::ibv_send_wr,
     bad_wr: *mut *mut rdma_sys::ibv_send_wr,
+    userspace_doorbell: bool,
 ) -> Result<(), Error> {
     if ibqp.is_null() || bad_wr.is_null() || wr_list.is_null() {
         return Err(Error::EINVAL);
@@ -48,6 +50,9 @@ pub fn rxe_post_send(
     }
     let ibqp = unsafe { &mut *ibqp };
 
+    if userspace_doorbell == true {
+        return Ok(());
+    }
     if let Err(e) = post_send_db(ibqp) {
         return Err(e);
     } else if rc_errno != Error::UnknownErrno {
@@ -197,9 +202,7 @@ fn convert_send_wr(
     kwr: &mut librxe_sys::rxe_send_wr,
     uwr: &rdma_sys::ibv_send_wr,
 ) {
-    unsafe {
-        *kwr = std::mem::zeroed::<librxe_sys::rxe_send_wr>();
-    }
+    *kwr = librxe_sys::rxe_send_wr::default();
     kwr.wr_id = uwr.wr_id;
     kwr.num_sge = uwr.num_sge as u32;
     kwr.opcode = uwr.opcode;
@@ -209,35 +212,35 @@ fn convert_send_wr(
         ibv_wr_opcode::IBV_WR_RDMA_WRITE
         | ibv_wr_opcode::IBV_WR_RDMA_WRITE_WITH_IMM
         | ibv_wr_opcode::IBV_WR_RDMA_READ => unsafe {
-            kwr.wr.rdma.as_mut().remote_addr = uwr.wr.rdma.remote_addr;
-            kwr.wr.rdma.as_mut().rkey = uwr.wr.rdma.rkey;
+            kwr.wr.rdma.remote_addr = uwr.wr.rdma.remote_addr;
+            kwr.wr.rdma.rkey = uwr.wr.rdma.rkey;
         },
         ibv_wr_opcode::IBV_WR_SEND | ibv_wr_opcode::IBV_WR_SEND_WITH_IMM => {
             if librxe_sys::qp_type(qp) == ibv_qp_type::IBV_QPT_UD {
                 unsafe {
                     let ah = &*librxe_sys::to_rah(uwr.wr.ud.ah)
                         .expect("unable to find rxe_ah from ib_ah");
-                    kwr.wr.ud.as_mut().remote_qpn = uwr.wr.ud.remote_qpn;
-                    kwr.wr.ud.as_mut().remote_qkey = uwr.wr.ud.remote_qkey;
-                    kwr.wr.ud.as_mut().ah_num = ah.ah_num as _;
+                    kwr.wr.ud.remote_qpn = uwr.wr.ud.remote_qpn;
+                    kwr.wr.ud.remote_qkey = uwr.wr.ud.remote_qkey;
+                    kwr.wr.ud.ah_num = ah.ah_num as _;
                 }
             }
         }
         ibv_wr_opcode::IBV_WR_ATOMIC_CMP_AND_SWP | ibv_wr_opcode::IBV_WR_ATOMIC_FETCH_AND_ADD => unsafe {
-            kwr.wr.atomic.as_mut().remote_addr = uwr.wr.atomic.remote_addr;
-            kwr.wr.atomic.as_mut().compare_add = uwr.wr.atomic.compare_add;
-            kwr.wr.atomic.as_mut().swap = uwr.wr.atomic.swap;
-            kwr.wr.atomic.as_mut().rkey = uwr.wr.atomic.rkey;
+            kwr.wr.atomic.remote_addr = uwr.wr.atomic.remote_addr;
+            kwr.wr.atomic.compare_add = uwr.wr.atomic.compare_add;
+            kwr.wr.atomic.swap = uwr.wr.atomic.swap;
+            kwr.wr.atomic.rkey = uwr.wr.atomic.rkey;
         },
         ibv_wr_opcode::IBV_WR_BIND_MW => unsafe {
             let ibmr = *uwr.bind_mw_tso_union.bind_mw.bind_info.mr;
             let ibmw = *uwr.bind_mw_tso_union.bind_mw.mw;
-            kwr.wr.mw.as_mut().addr = uwr.bind_mw_tso_union.bind_mw.bind_info.addr;
-            kwr.wr.mw.as_mut().length = uwr.bind_mw_tso_union.bind_mw.bind_info.length;
-            kwr.wr.mw.as_mut().mr_lkey = ibmr.lkey;
-            kwr.wr.mw.as_mut().mw_rkey = ibmw.rkey;
-            kwr.wr.mw.as_mut().rkey = uwr.bind_mw_tso_union.bind_mw.rkey;
-            kwr.wr.mw.as_mut().access = uwr.bind_mw_tso_union.bind_mw.bind_info.mw_access_flags;
+            kwr.wr.mw.addr = uwr.bind_mw_tso_union.bind_mw.bind_info.addr;
+            kwr.wr.mw.length = uwr.bind_mw_tso_union.bind_mw.bind_info.length;
+            kwr.wr.mw.mr_lkey = ibmr.lkey;
+            kwr.wr.mw.mw_rkey = ibmw.rkey;
+            kwr.wr.mw.rkey = uwr.bind_mw_tso_union.bind_mw.rkey;
+            kwr.wr.mw.access = uwr.bind_mw_tso_union.bind_mw.bind_info.mw_access_flags;
         },
         _ => {}
     }
@@ -259,11 +262,7 @@ fn init_send_wqe(
         };
         if ah.ah_num == 0 {
             unsafe {
-                std::ptr::copy_nonoverlapping::<librxe_sys::rxe_av>(
-                    &ah.av,
-                    &mut wqe.wr.wr.ud.as_mut().av,
-                    1,
-                )
+                std::ptr::copy_nonoverlapping::<librxe_sys::rxe_av>(&ah.av, &mut wqe.wr.wr.ud.av, 1)
             }
         }
     }
@@ -347,7 +346,7 @@ fn post_send_db(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
 fn post_send_db_user_space(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
     let rqp = librxe_sys::to_rqp(ibqp).expect("unable to find rxe_qp from ib qp");
     let rqp = unsafe { &mut *rqp };
-    //rxe_req::rxe_requster(rqp)
+    //RxeQueuePair::rxe_requester(rqp);
     todo!()
 }
 
@@ -400,3 +399,5 @@ fn rxe_post_one_recv(
 
     Ok(())
 }
+
+pub static mut global_ip_pkt_out: Vec<u8> = Vec::<u8>::new();
