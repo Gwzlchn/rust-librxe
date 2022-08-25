@@ -1,10 +1,13 @@
+use std::cell::RefCell;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
-use crate::rxe_hdr::RxePktInfo;
 use crate::rxe_pd::RxePd;
-use crate::rxe_verbs::RxeMrCopyDir;
+use crate::rxe_verbs::{IbvMrType, RxeMrCopyDir, RxeMrState};
+use crate::{rxe_hdr::RxePktInfo, rxe_verbs::IbMrType};
 use nix::errno::Errno;
 use nix::Error;
+use rand;
 use rdma_sys::{ibv_access_flags, ibv_dereg_mr, ibv_mr, ibv_reg_mr};
 use std::fmt::Debug;
 use tracing::{debug, error};
@@ -89,28 +92,61 @@ impl RxePktInfo {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub enum IBVMrType {
-    IBV_MR_TYPE_MR,
-    IBV_MR_TYPE_NULL_MR,
-    IBV_MR_TYPE_IMPORTED_MR,
-    IBV_MR_TYPE_DMABUF_MR,
+// assume a page is 4kb
+pub const DUMMY_PAGE_SIZE: usize = 1 << 12;
+
+pub const RXE_BUF_PER_MAP: usize = DUMMY_PAGE_SIZE / std::mem::size_of::<RxePhysBuf>();
+
+#[derive(Debug, Clone, Copy)]
+struct RxePhysBuf {
+    pub addr: u64,
+    pub size: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RxeMap {
+    pub buf: [RxePhysBuf; RXE_BUF_PER_MAP],
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+struct RxeMapSet {
+    pub va: u64,
+    pub iova: u64,
+    pub length: usize,
+    pub nbuf: u32,
+    pub page_shift: usize,
+    pub page_mask: usize,
+}
+
+#[inline]
+pub fn rkey_is_mw(rkey: u32) -> bool {
+    let index = rkey >> 8;
+    index >= librxe_sys::rxe_device_param::RXE_MIN_MW_INDEX as u32
+        && index <= librxe_sys::rxe_device_param::RXE_MAX_MW_INDEX as u32
+}
 #[derive(Clone)]
 pub struct RxeMr {
     /// the protection domain the raw memory region belongs to
-    pd: NonNull<RxePd>,
+    pub pd: NonNull<RxePd>,
     /// the internal `ibv_mr` pointer
-    inner_mr: NonNull<ibv_mr>,
-    /// the addr of the raw memory region
-    addr: *mut u8,
-    /// the len of the raw memory region
-    pub len: usize,
-    // RXE, ibv_cmd_reg_mr: libibverbs/cmd.c
-    mr_type: IBVMrType,
-    access: ibv_access_flags,
+    pub inner_mr: NonNull<ibv_mr>,
+    pub lkey: u32,
+    pub rkey: u32,
+    pub state: RxeMrState,
+    pub mr_type: IbMrType,
+    pub access: ibv_access_flags,
+    pub addr: *mut u8, // the userspace address start
+    pub length: usize, // the userspace address length in bytes
+    // pub map_shift: usize,
+    // pub map_mask: usize,
+    // pub num_buf: u32,
+
+    // pub max_buf: u32,
+    // pub num_map: u32,
+
+    // pub cur_map_set: Option<Rc<RefCell<RxeMapSet>>>,
+    // pub next_map_set: Option<Rc<RefCell<RxeMapSet>>>,
+    pub vmr_type: IbvMrType,
 }
 
 impl RxeMr {
@@ -134,22 +170,95 @@ impl RxeMr {
             err
         })?;
         Ok(Self {
-            inner_mr,
-            addr,
-            len,
             pd: pd,
-            mr_type: IBVMrType::IBV_MR_TYPE_MR,
+            inner_mr: inner_mr,
+            lkey: unsafe { inner_mr.as_ref().lkey },
+            rkey: unsafe { inner_mr.as_ref().rkey },
+            state: RxeMrState::RxeMrStateValid,
+
+            addr,
+            length: len,
+
+            // keep the same assignment in rdma-core/libibverbs/cmd.c
+            vmr_type: IbvMrType::IbvMrTypeMr,
+            // keep the same assignment  in rxe_mr.c/rxe_mr_init_user
+            mr_type: IbMrType::IbMrTypeUser,
             access: access,
         })
     }
     /// Get local key of memory region
     pub fn lkey(&self) -> u32 {
-        unsafe { self.inner_mr.as_ref().lkey }
+        self.lkey
     }
 
     /// Get remote key of memory region
     pub fn rkey(&self) -> u32 {
-        unsafe { self.inner_mr.as_ref().rkey }
+        self.rkey
+    }
+
+    pub fn rxe_get_next_key(last_key: u32) -> u8 {
+        let mut key = 0;
+        loop {
+            key = rand::random::<u8>();
+            if key != (last_key as u8) {
+                break;
+            }
+        }
+        key
+    }
+
+    /// return true means iova and length is in the memory region
+    /// return false means it is out of
+    pub fn mr_check_range(&self, iova: u64, length: usize) -> bool {
+        let addr = self.addr as usize;
+        return if (iova as usize) < addr
+            || length > self.length
+            || (iova as usize) > addr + self.length - length
+        {
+            false
+        } else {
+            true
+        };
+    }
+
+    /// copy data from a range \[addr, addr+length-1\] to or from
+    /// a mr object starting at iova.
+    ///
+    /// # Arguments
+    /// * `iova`    - the address recorded in a DMA SG list
+    /// * `addr`    - data start address
+    /// * `length`  - data read/write bytes
+    /// * `dir`     
+    ///     - RXE_TO_MR_OBJ means copy data from [addr, addr + length - 1] to addr recorded in DMA SG list
+    ///     - RXE_FROM_MR_OBJ means copy data from addr recorded in DMA SG list to [addr, addr + length)
+    pub fn rxe_mr_copy(
+        &self,
+        iova: u64,
+        addr: *mut u8,
+        length: usize,
+        dir: RxeMrCopyDir,
+    ) -> Result<(), Error> {
+        if length == 0 {
+            return Ok(());
+        }
+        if !self.mr_check_range(iova, length) {
+            return Err(Error::EFAULT);
+        }
+        let src = if dir == RxeMrCopyDir::RxeToMrObj {
+            addr
+        } else {
+            iova as *const u8
+        };
+        let dst = if dir == RxeMrCopyDir::RxeToMrObj {
+            iova as *mut u8
+        } else {
+            addr
+        };
+        unsafe {
+            std::ptr::copy_nonoverlapping(src, dst, length);
+        }
+
+        Ok(())
     }
 }
 
@@ -159,7 +268,7 @@ impl Debug for RxeMr {
         f.debug_struct("Rxe MR")
             .field("inner_mr", &self.inner_mr)
             .field("addr", &(self.addr as usize))
-            .field("len", &self.len)
+            .field("len", &self.length)
             .field("pd", &self.pd)
             .finish()
     }
