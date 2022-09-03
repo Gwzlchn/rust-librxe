@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::mem::size_of;
+use std::net::{SocketAddr, Ipv4Addr};
 use std::rc::Rc;
 
 use crate::rxe_hdr::RxePktInfo;
@@ -8,7 +9,6 @@ use crate::rxe_qp::RxeQueuePair;
 use crate::rxe_verbs;
 use bytes::BytesMut;
 use etherparse::{IpHeader::*, PacketHeaders, TransportHeader::*, UdpHeader};
-use nix::sys::socket::{self, MsgFlags};
 use tracing::debug;
 
 impl RxePktInfo {
@@ -123,14 +123,25 @@ impl RxeSkb {
 
     pub fn rxe_xmit_packet(&self) {
         let ip_pkt = self.write_bytes();
-        let sock = self.pkt_info.borrow().qp.as_ref().unwrap().borrow().sock_fd;
-        let _dst_addr = self.ipv4_hdr.destination;
-        assert_eq!(_dst_addr[0], 10);
-        let dst_addr = socket::SockaddrIn::new(
-            _dst_addr[3],
-            _dst_addr[2],
-            _dst_addr[1],
-            _dst_addr[0],
+        let sock = unsafe {
+            &self
+                .pkt_info
+                .as_ref()
+                .borrow()
+                .qp
+                .as_ref()
+                .unwrap()
+                .borrow()
+                .pd
+                .as_ref()
+                .ctx
+                .as_ref()
+                .sock
+        };
+        let mut _dst_addr =self.ipv4_hdr.destination;
+        _dst_addr.reverse();
+        let dst_addr = SocketAddr::new(
+            std::net::IpAddr::V4(Ipv4Addr::from(_dst_addr)),
             u16::from_be(self.udp_hdr.destination_port),
         );
 
@@ -138,7 +149,7 @@ impl RxeSkb {
         unsafe {
             crate::GLOBAL_IP_PKT_OUT = ip_pkt.to_vec();
         }
-        socket::sendto(sock, &ip_pkt, &dst_addr, MsgFlags::empty()).unwrap();
+        sock.send_to(&ip_pkt, dst_addr).unwrap();
     }
     pub fn rxe_udp_encap_recv(recv_buf: Vec<u8>) -> Self {
         let mut pkt_info = RxePktInfo::default();

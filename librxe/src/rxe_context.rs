@@ -4,13 +4,13 @@ use crate::rxe_pd::RxePd;
 use crate::rxe_qp::RxeQueuePair;
 use async_rdma::gid::Gid;
 use nix::Error;
+use raw_socket::prelude::*;
 use rdma_sys::{ibv_context, ibv_device, ibv_gid, ibv_mtu::IBV_MTU_256, ibv_port_attr};
 use std::{
     cell::RefCell, collections::HashMap, fmt::Debug, fs, net::Ipv6Addr, path::Path, ptr::NonNull,
     rc::Rc, str::FromStr,
 };
 
-#[derive(Clone)]
 pub struct RxeContext {
     pub ibv_dev: ibv_device,
     pub rxe_ctx: ibv_context,
@@ -24,6 +24,9 @@ pub struct RxeContext {
     pub qp_pool: HashMap<u32, Rc<RefCell<RxeQueuePair>>>,
     // Memory Region Pool, key = mr index(rket >> 8), val = qp
     pub mr_pool: HashMap<u32, Rc<RefCell<RxeMr>>>,
+
+    // global socket for all queue pairs
+    pub sock: RawSocket,
 }
 
 impl Debug for RxeContext {
@@ -74,6 +77,10 @@ impl RxeContext {
             _gid.raw = _gid_128.to_be_bytes();
             _gid
         };
+        let sock = RawSocket::new(Domain::ipv4(), Type::raw(), Some(Protocol::udp())).unwrap();
+        let enable = 1;
+        sock.set_sockopt(Level::IPV4, Name::IPV4_HDRINCL, &enable)
+            .unwrap();
 
         Ok(RxeContext {
             ibv_dev: ibv_dev,
@@ -82,6 +89,7 @@ impl RxeContext {
             gid: gid.into(),
             qp_pool: HashMap::with_capacity(1024),
             mr_pool: HashMap::with_capacity(1024),
+            sock: sock,
         })
     }
 

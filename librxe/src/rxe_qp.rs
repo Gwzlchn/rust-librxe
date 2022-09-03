@@ -144,8 +144,6 @@ pub struct RxeQueuePair {
     pub rcq: NonNull<librxe_sys::rxe_cq>, // maybe use RxeCq would be better
 
     pub src_port: u16,
-    // socket file descriptor
-    pub sock_fd: libc::c_int,
 
     pub pri_av: librxe_sys::rxe_av,
     pub alt_av: librxe_sys::rxe_av,
@@ -181,25 +179,6 @@ impl RxeQueuePair {
         let mut qp = librxe_sys::rxe_qp::default();
 
         // rxe_qp_init_req
-        // create raw socket
-        let sock_fd = unsafe {
-            let _sock_fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_UDP);
-            if _sock_fd < 0 {
-                panic!("create raw socket failed");
-            }
-            let on = 1;
-            let ret = libc::setsockopt(
-                _sock_fd,
-                libc::IPPROTO_IP,
-                libc::IP_HDRINCL,
-                &on as *const _ as *const libc::c_void,
-                std::mem::size_of_val(&on) as libc::socklen_t,
-            );
-            if ret < 0 {
-                panic!("setting IP_HDRINCL to raw socket failed");
-            }
-            _sock_fd
-        };
         let qpn = unsafe { RxeQueuePair::gen_next_qp_num(pd.as_ref().ctx) };
         let src_port = ((fxhash::hash32(&qpn) as u16) & 0x3FFF) + rxe_verbs::RXE_ROCE_V2_SPORT;
         let mut req_wqe_size = std::cmp::max(
@@ -265,7 +244,6 @@ impl RxeQueuePair {
             scq: scq,
             rcq: rcq,
             src_port: src_port,
-            sock_fd: sock_fd,
             pri_av: librxe_sys::rxe_av::default(),
             alt_av: librxe_sys::rxe_av::default(),
             mtu: mtu,
