@@ -1,5 +1,8 @@
 use async_rdma::queue_pair::QueuePairInitAttr;
-use librxe::{rxe_context::RxeContext, rxe_cq::RxeCompletionQueue, rxe_qp::RxeQpState};
+use librxe::{
+    rxe_context::RxeContext, rxe_cq::RxeCompletionQueue, rxe_net::RxeSkb, rxe_qp::RxeQpState,
+    rxe_verbs,
+};
 use rdma_sys::{
     ibv_access_flags, ibv_wc, ibv_wc_opcode, ibv_wc_status, imm_data_invalidated_rkey_union_t,
 };
@@ -29,8 +32,8 @@ fn librxe_check_reg_mr() {
         .rkey();
     // check resource pool
     assert_eq!(1, rxe_cxt.rxe_pool_count_mr());
-    let mr_in_the_pool = rxe_cxt
-        .rxe_pool_get_mr(mr_rkey)
+    let mr_in_the_pool = pd
+        .lookup_mr(0, mr_rkey, rxe_verbs::RxeMrLookupType::RxeLookupRemote)
         .expect("Couldn't find mr in the pool")
         .borrow();
     assert_eq!(mr_in_the_pool.rkey(), mr_rkey);
@@ -42,17 +45,20 @@ fn librxe_check_create_qp() {
     let mut rxe_cxt = RxeContext::open(Some("rxe_0"), 1, 0).unwrap();
     let mut pd = rxe_cxt.create_rxe_pd().unwrap();
 
-    let cq = rxe_cxt
+    let mut cq = rxe_cxt
         .create_completion_queue(
             MINIMUM_COMPLETION_QUEUE_SIZE,
             MAXIMUN_COMPLETION_QUEUE_ENTRY_SIZE,
         )
         .unwrap();
 
-    let mut qp_init_attr = create_qp_init_attr(&cq);
-    let qp = pd
-        .rxe_create_qp(&mut qp_init_attr)
-        .expect("create qp failed");
+    let mut qp_init_attr = create_qp_init_attr(&mut cq);
+    let qp = unsafe {
+        &mut *(pd
+            .rxe_create_qp(&mut qp_init_attr)
+            .expect("create qp failed")
+            .as_ptr())
+    };
 
     let qpn = qp.qp_num();
     // check resource pool
@@ -70,26 +76,30 @@ fn librxe_check_loopback() {
     let loopback_gid_idx = 1u8;
     let mut rxe_cxt = RxeContext::open(Some("rxe_0"), 1, loopback_gid_idx as usize).unwrap();
     let mut pd = rxe_cxt.create_rxe_pd().unwrap();
-    let cq = rxe_cxt
+    let mut cq = rxe_cxt
         .create_completion_queue(
             MINIMUM_COMPLETION_QUEUE_SIZE,
             MAXIMUN_COMPLETION_QUEUE_ENTRY_SIZE,
         )
         .unwrap();
 
-    let mut qp_init_attr = create_qp_init_attr(&cq);
-    let mut qp = pd
-        .rxe_create_qp(&mut qp_init_attr)
-        .expect("create qp failed");
+    let mut qp_init_attr = create_qp_init_attr(&mut cq);
+    let qp = unsafe {
+        &mut *(pd
+            .rxe_create_qp(&mut qp_init_attr)
+            .expect("create qp failed")
+            .as_ptr())
+    };
+
     // it should be reset in default
-    assert_eq!(qp.req.state, RxeQpState::QP_STATE_RESET);
+    assert_eq!(qp.req.state, RxeQpState::QpStateReset);
     // modify to init
     let port_num = 1;
 
     let flag = create_ibv_access_flag();
     let (mut attr, attr_mask) = qp.generate_modify_to_init_attr(flag, port_num);
     qp.modify_qp(&mut attr, attr_mask).unwrap();
-    assert_eq!(qp.req.state, RxeQpState::QP_STATE_INIT);
+    assert_eq!(qp.req.state, RxeQpState::QpStateInit);
 
     // modify to rtr
     let local_endpoint = qp.endpoint();
@@ -107,6 +117,11 @@ fn librxe_check_loopback() {
     qp.modify_qp(&mut attr, attr_mask).unwrap();
     // check psn in recv queue
     assert_eq!(qp.resp.psn, recv_queue_start_psn);
+    assert_eq!(
+        qp.mtu,
+        rxe_verbs::IBV_MTU_ENUM_TO_U32[attr.path_mtu as usize]
+    );
+    assert_eq!(qp.resp.state, RxeQpState::QpStateReady);
 
     // modify to rts
     let timeout = 0x12;
@@ -154,13 +169,17 @@ fn librxe_check_loopback() {
         data.as_mut_ptr() as *mut u8,
         (data_bytes >> 1) as u32,
         SEND_REQUEST_ID,
+        true,
     )
     .unwrap();
+    // mock received packet
+    let mut recv_skb = unsafe { RxeSkb::rxe_udp_encap_recv(librxe::GLOBAL_IP_PKT_OUT.to_vec()) };
+    recv_skb.rxe_rcv(&rxe_cxt).unwrap();
     let mut completions = [create_default_ibv_wc(); MINIMUM_COMPLETION_QUEUE_SIZE as usize];
-    let mut sent = false;
+    let mut sent = true; // TODO do_complete
     let mut received = false;
     while !sent || !received {
-        let completed = cq.poll(&mut completions[..]).unwrap();
+        let completed = cq.poll(&mut completions[..], true).unwrap();
         if completed.is_empty() {
             continue;
         }
@@ -176,7 +195,7 @@ fn librxe_check_loopback() {
                     assert!(!received);
                     received = true;
                     assert_eq!(data[ARR_LEN >> 1], data[0]);
-                    assert_eq!(data[(ARR_LEN >> 1)+1], data[1]);
+                    assert_eq!(data[(ARR_LEN >> 1) + 1], data[1]);
                     println!("received! :{}", data[ARR_LEN >> 1]);
                 }
                 _ => unreachable!(),
@@ -192,7 +211,7 @@ fn create_ibv_access_flag() -> ibv_access_flags {
         | ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC
 }
 
-fn create_qp_init_attr(cq: &RxeCompletionQueue) -> QueuePairInitAttr {
+fn create_qp_init_attr(cq: &mut RxeCompletionQueue) -> QueuePairInitAttr {
     let mut qp_init_attr = QueuePairInitAttr::default();
     qp_init_attr.qp_init_attr_inner.recv_cq = cq.as_ptr();
     qp_init_attr.qp_init_attr_inner.send_cq = cq.as_ptr();
