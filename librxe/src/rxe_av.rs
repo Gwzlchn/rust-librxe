@@ -4,29 +4,11 @@ use librxe_sys::rxe_av;
 use rdma_sys::{ibv_ah_attr, ibv_gid, ibv_qp_type, ibv_query_gid};
 use std::{mem::MaybeUninit, ptr::NonNull};
 
-// #[derive(Clone)]
-// pub struct RxeAddrHandler {
-//     pub ibv_ah: rdma_sys::ibv_ah,
-//     pub av: librxe_sys::rxe_av,
-//     pub ah_num: u32,
-// }
-
 // true:  addr is ipv4
 // false: addr is ipv6
 pub fn ipv6_addr_v4mapped(addr: &libc::in6_addr) -> bool {
-    return if addr.s6_addr[0] == 0
-        && addr.s6_addr[1] == 0
-        && addr.s6_addr[2] == 0
-        && addr.s6_addr[3] == 0
-        && addr.s6_addr[4] == 0
-        && addr.s6_addr[5] == 0
-        && addr.s6_addr[6] == 0
-        && addr.s6_addr[7] == 0
-        && addr.s6_addr[8] == 0
-        && addr.s6_addr[9] == 0
-        && addr.s6_addr[10] == 0xFF
-        && addr.s6_addr[11] == 0xFF
-    {
+    let addr_int = u128::from_be_bytes(addr.s6_addr);
+    return if (addr_int >> 32) == 0xFFFFu128 {
         true
     } else {
         false
@@ -62,18 +44,8 @@ pub fn gid_to_ipv6(gid: &rdma_sys::ibv_gid, sockaddr6: &mut libc::sockaddr_in6) 
 ///
 pub fn rxe_init_av(attr: &ibv_ah_attr, pd: NonNull<RxePd>, av: &mut rxe_av) {
     let sgid = {
-        let mut gid = MaybeUninit::<ibv_gid>::uninit();
-        // SAFETY: ffi
-        let errno = unsafe {
-            ibv_query_gid(
-                (*pd.as_ref().as_ptr()).context,
-                attr.port_num,
-                attr.grh.sgid_index as i32,
-                gid.as_mut_ptr(),
-            )
-        };
-        // SAFETY: ffi init
-        Gid::from(unsafe { gid.assume_init() })
+        let gid = unsafe { pd.as_ref().ctx.as_ref().get_gid() };
+        Gid::from(unsafe { gid })
     };
     unsafe {
         let src_grh = std::mem::transmute::<rdma_sys::ibv_global_route, librxe_sys::rxe_global_route>(
@@ -113,11 +85,16 @@ pub fn rxe_get_av(pkt: &RxePktInfo) -> Option<rxe_av> {
 
 #[test]
 fn check_ipv6_addr_v4mapped() {
-    let ipv4_addr = libc::in6_addr {
+    let ipv4_addr_mapped = libc::in6_addr {
         s6_addr: [
             00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 0xff, 0xff, 0x0a, 0x13, 00, 0x24,
         ],
     };
-    let res = ipv6_addr_v4mapped(&ipv4_addr);
-    assert!(res);
+    assert!(ipv6_addr_v4mapped(&ipv4_addr_mapped));
+    let ipv6_addr = libc::in6_addr {
+        s6_addr: [
+            0xFE, 0x80, 00, 00, 00, 00, 00, 00, 00, 00, 0xff, 0xff, 0x0a, 0x13, 00, 0x24,
+        ],
+    };
+    assert!(!ipv6_addr_v4mapped(&ipv6_addr));
 }
