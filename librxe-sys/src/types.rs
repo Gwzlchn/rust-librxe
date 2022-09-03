@@ -21,10 +21,24 @@ pub struct rxe_cq {
     pub mmap_info: mminfo,
     pub queue: *mut rxe_queue_buf,
     pub lock: libc::pthread_spinlock_t,
-    pub wc: *mut ib_uverbs_wc,
+
+    /* new API support */
+    pub wc: *mut rdma_sys::ibv_wc,
     pub wc_size: usize,
     pub cur_index: u32,
 }
+
+impl Default for rxe_cq {
+    // like malloc and memset to 0
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+
 #[repr(C)]
 pub struct rxe_rq {
     pub max_wr: c_int,
@@ -173,24 +187,17 @@ pub struct rxe_qp {
     pub ssn: c_uint,
     pub cur_index: u32,
     pub err: c_int,
-    // addtional variables
-    // pub srq: *mut rxe_srq,
-    // pub scq: *mut rxe_cq,
-    // pub rcq: *mut rxe_cq,
+}
 
-    // pub src_port: u16,
-
-    // pub pri_av: rxe_av,
-    // pub alt_av: rxe_av,
-
-    // pub mtu: c_uint,
-    // pub req: rxe_req_info,
-    // pub comp: rxe_comp_info,
-    // pub resp: rxe_resp_info,
-    // pub valid: c_uint,
-    // pub attr: rdma_sys::ibv_qp_attr,
-    // /* guard requester and completer */
-    // pub state_lock: libc::pthread_spinlock_t,
+impl Default for rxe_qp {
+    // like malloc and memset to 0
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 
 // keep same as rdma-core/kernel-headers/rdma/rdma_user_rxe.h

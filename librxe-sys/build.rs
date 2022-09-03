@@ -43,7 +43,6 @@ fn main() {
         .blocklist_type("rxe_av")
         .blocklist_type("rxe_send_wqe")
         .blocklist_type("rxe_send_wr")
-        .allowlist_type("ib_uverbs_wc")
         .allowlist_type("ibv_post_send")
         .allowlist_type("ib_uverbs_post_send_resp")
         .allowlist_type("ib_uverbs_write_cmds")

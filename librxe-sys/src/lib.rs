@@ -87,6 +87,27 @@ pub unsafe fn serialize_raw<T: Sized>(src: &T) -> &[u8] {
     ::std::slice::from_raw_parts((src as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
+const fn num_bits<T>() -> usize {
+    std::mem::size_of::<T>() * 8
+}
+
+fn log_2(x: u32) -> u32 {
+    assert!(x > 0);
+    num_bits::<u32>() as u32 - x.leading_zeros() - 1
+}
+
+pub unsafe fn rxe_queue_init(num_elem: u32, elem_size: u32) -> *mut rxe_queue_buf {
+    let num_slots = num_elem + 1;
+    let num_slots = num_slots.next_power_of_two();
+    let elem_size = elem_size.next_power_of_two();
+    let buf_size = std::mem::size_of::<rxe_queue_buf>() + (num_slots * elem_size) as usize;
+
+    let mut buf = libc::malloc(buf_size) as *mut rxe_queue_buf;
+    buf.as_mut().unwrap().log2_elem_size = log_2(elem_size);
+    buf.as_mut().unwrap().index_mask = num_slots - 1;
+    buf
+}
+
 #[test]
 fn check_qp_layout() {
     assert_eq!(
