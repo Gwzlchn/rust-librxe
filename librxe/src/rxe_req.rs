@@ -1,20 +1,18 @@
-use std::cell::RefCell;
-use std::ptr::NonNull;
-use std::rc::Rc;
-
 use crate::rxe_av::rxe_get_av;
 use crate::rxe_hdr::*;
 use crate::rxe_net::RxeSkb;
 use crate::rxe_opcode::{rxe_hdr_mask, rxe_wr_mask, wr_opcode_mask, RXE_OPCODE_INFO};
 use crate::rxe_qp::{RxeQpState, RxeQueuePair};
 use crate::rxe_verbs::{self, psn_compare, RxeMrCopyDir, WqeState};
-use librxe_sys::{load_consumer_index, rxe_device_param, rxe_qp, rxe_qp_state, rxe_send_wqe};
+use librxe_sys::{load_consumer_index, rxe_device_param, rxe_send_wqe};
 use likely_stable::unlikely;
 use nix::errno::Errno;
 use nix::Error;
 use rdma_sys::ibv_opcode::IBV_OPCODE_RC_COMPARE_SWAP;
 use rdma_sys::{ibv_opcode, ibv_qp_type, ibv_send_flags, ibv_wc_status, ibv_wr_opcode};
-use tracing::debug;
+use std::cell::RefCell;
+use std::ptr::NonNull;
+use std::rc::Rc;
 
 impl RxeQueuePair {
     fn next_opcode(
@@ -226,12 +224,12 @@ impl RxeQueuePair {
         let prod = librxe_sys::load_producer_index(sq_buf);
         let cons = librxe_sys::load_consumer_index(sq_buf);
 
-        if unlikely(self.req.state == RxeQpState::QP_STATE_DRAIN) {
+        if unlikely(self.req.state == RxeQpState::QpStateDrain) {
             unsafe {
                 libc::pthread_spin_lock(&mut self.state_lock);
             }
             loop {
-                if self.req.state != RxeQpState::QP_STATE_DRAIN {
+                if self.req.state != RxeQpState::QpStateDrain {
                     /* comp just finished */
                     unsafe {
                         libc::pthread_spin_unlock(&mut self.state_lock);
@@ -240,13 +238,13 @@ impl RxeQueuePair {
                 }
                 if let Some(wqe) = wqe {
                     unsafe {
-                        if (index != cons) || (*wqe).state != WqeState::WqeStatePosted as u32 {
+                        if (index != cons) || (*wqe).state != WqeState::WqeStatePosted {
                             libc::pthread_spin_unlock(&mut self.state_lock);
                         }
                     }
                     break;
                 }
-                self.req.state = RxeQpState::QP_STATE_DRAINED;
+                self.req.state = RxeQpState::QpStateDrained;
                 unsafe {
                     libc::pthread_spin_unlock(&mut self.state_lock);
                 }
@@ -260,9 +258,9 @@ impl RxeQueuePair {
             &mut *(librxe_sys::addr_from_index::<librxe_sys::rxe_send_wqe>(sq_buf, index))
         };
         if unlikely(
-            (self.req.state == RxeQpState::QP_STATE_DRAIN
-                || self.req.state == RxeQpState::QP_STATE_DRAINED)
-                && wqe.state != WqeState::WqeStateProcessing as u32,
+            (self.req.state == RxeQpState::QpStateDrain
+                || self.req.state == RxeQpState::QpStateDrained)
+                && wqe.state != WqeState::WqeStateProcessing,
         ) {
             return None;
         }
@@ -383,13 +381,15 @@ impl RxeQueuePair {
                     pkt_info.unsplit_iba_pkt(tmp_view);
                 }
             } else {
-                pkt_info.copy_data(
-                    0,
-                    &mut wqe.dma,
-                    pkt_info.get_iba_hdr_len(),
-                    payload as u32,
-                    RxeMrCopyDir::RxeFromMrObj,
-                )?;
+                unsafe {
+                    self.pd.as_ref().copy_data(
+                        0,
+                        &mut wqe.dma,
+                        pkt_info.payload_addr(),
+                        payload as u32,
+                        RxeMrCopyDir::RxeFromMrObj,
+                    )?
+                };
             }
         }
         Ok(())
@@ -463,10 +463,10 @@ impl RxeQueuePair {
     pub fn rxe_requester(&mut self) -> Result<(), Error> {
         // break the loop only if the current work request is not legal
         loop {
-            if unlikely(!self.valid || self.req.state == RxeQpState::QP_STATE_ERROR) {
+            if unlikely(!self.valid || self.req.state == RxeQpState::QpStateError) {
                 break;
             }
-            if unlikely(self.req.state == RxeQpState::QP_STATE_RESET) {
+            if unlikely(self.req.state == RxeQpState::QpStateReset) {
                 self.req.wqe_index = load_consumer_index(self.sq_queue());
                 self.req.opcode = -1;
                 self.req.need_rd_atomic = 0;
