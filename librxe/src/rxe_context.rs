@@ -2,38 +2,33 @@ use crate::rxe_cq::RxeCompletionQueue;
 use crate::rxe_mr::RxeMr;
 use crate::rxe_pd::RxePd;
 use crate::rxe_qp::RxeQueuePair;
-use async_rdma::{device::DeviceList, gid::Gid};
+use async_rdma::gid::Gid;
 use nix::Error;
-use rdma_sys::{
-    ibv_context, ibv_device, ibv_device_attr_ex, ibv_gid, ibv_open_device, ibv_port_attr,
-    ibv_query_device_ex, ibv_query_gid,
-};
+use rdma_sys::{ibv_context, ibv_device, ibv_gid, ibv_mtu::IBV_MTU_256, ibv_port_attr};
 use std::{
-    cell::RefCell, collections::HashMap, fmt::Debug, mem::MaybeUninit, ptr::NonNull, rc::Rc,
+    cell::RefCell, collections::HashMap, fmt::Debug, fs, net::Ipv6Addr, path::Path, ptr::NonNull,
+    rc::Rc, str::FromStr,
 };
 
 #[derive(Clone)]
 pub struct RxeContext {
-    pub ibv_dev: NonNull<ibv_device>,
-    pub rxe_ctx: NonNull<ibv_context>,
-    pub dev_attr: ibv_device_attr_ex,
+    pub ibv_dev: ibv_device,
+    pub rxe_ctx: ibv_context,
     pub port_attr: ibv_port_attr,
     pub gid: Gid,
+
     // resource pool
+    // Protected domain pool, key = handle, value = pd
+    // pub pd_pool: HashMap<u32, Rc<RefCell<RxePd>>>,
     // Queue Pair Pool, key = qpn, val = qp
     pub qp_pool: HashMap<u32, Rc<RefCell<RxeQueuePair>>>,
     // Memory Region Pool, key = mr index(rket >> 8), val = qp
     pub mr_pool: HashMap<u32, Rc<RefCell<RxeMr>>>,
-    // Memory Window Pool, key = rkey,val=mw
-    // Address Handler Pool, key=ah_num, val= ah
 }
 
 impl Debug for RxeContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RxeDevice")
-            .field("ibv_dev", &self.ibv_dev)
-            .field("rxe_ctx", &self.rxe_ctx)
-            //.field("dev_attr", &self.dev_attr.)
             .field("port_attr state", &self.port_attr.state)
             .field("port_attr MTU", &self.port_attr.active_mtu)
             .field("gid", &self.gid)
@@ -43,57 +38,48 @@ impl Debug for RxeContext {
 
 impl RxeContext {
     /// Get the internal context pointer
-    pub(crate) const fn as_ptr(&self) -> *mut ibv_context {
-        self.rxe_ctx.as_ptr()
+    pub(crate) fn as_ptr(&mut self) -> *mut ibv_context {
+        &mut self.rxe_ctx as *mut ibv_context
     }
 
-    pub fn open(dev_name: Option<&str>, port_num: u8, gid_index: usize) -> Result<Self, Error> {
-        let dev_list = DeviceList::available().expect(
-            "This is a basic verb that shouldn't fail, check if the module ib_uverbs is loaded.",
-        );
+    pub fn open(_dev_name: Option<&str>, _port_num: u8, _gid_index: usize) -> Result<Self, Error> {
+        //let ibv_dev = unsafe { NonNull::new_unchecked(dev.ffi_ptr()) };
+        let ibv_dev = unsafe {
+            let mut ibv_dev = std::mem::MaybeUninit::<ibv_device>::uninit();
+            std::ptr::write_bytes(ibv_dev.as_mut_ptr(), 0, 1);
+            ibv_dev.assume_init()
+        };
+        let inner_ctx = unsafe {
+            let mut ibv_ctx = std::mem::MaybeUninit::<ibv_context>::uninit();
+            std::ptr::write_bytes(ibv_ctx.as_mut_ptr(), 0, 1);
+            ibv_ctx.assume_init()
+        };
+        let mut inner_port_attr = unsafe {
+            let mut port_attr = std::mem::MaybeUninit::<ibv_port_attr>::uninit();
+            std::ptr::write_bytes(port_attr.as_mut_ptr(), 0, 1);
+            port_attr.assume_init()
+        };
+        inner_port_attr.active_mtu = IBV_MTU_256;
+        inner_port_attr.lid = 0;
 
-        let dev = match dev_name {
-            Some(name) => dev_list.iter().find(|&d| d.name() == name),
-            None => dev_list.get(0),
-        }
-        .unwrap();
-
-        // SAFETY: ffi
-        // 1. `dev` is valid now.
-        // 2. `*mut ibv_context` does not associate with the lifetime of `*mut ibv_device`.
-        let inner_ctx = NonNull::new(unsafe { ibv_open_device(dev.ffi_ptr()) }).unwrap();
-        let mut device_attr = unsafe { std::mem::zeroed() };
-        let mut device_attr_ex_input = unsafe { std::mem::zeroed() };
-        let err = unsafe {
-            ibv_query_device_ex(
-                inner_ctx.as_ptr(),
-                &mut device_attr_ex_input,
-                &mut device_attr,
-            )
+        let gid_file = Path::new(env!("CARGO_MANIFEST_DIR")).join("gid.txt");
+        let gid_str = fs::read_to_string(gid_file.to_str().unwrap()).expect("no gid file found");
+        let _gid_128: u128 = Ipv6Addr::from_str(&gid_str)
+            .expect("parsed gid error")
+            .into();
+        let gid = unsafe {
+            let mut _gid = std::mem::MaybeUninit::<ibv_gid>::uninit();
+            std::ptr::write_bytes(_gid.as_mut_ptr(), 0, 1);
+            let mut _gid = _gid.assume_init();
+            _gid.raw = _gid_128.to_be_bytes();
+            _gid
         };
 
-        let gid = {
-            let mut gid = MaybeUninit::<ibv_gid>::uninit();
-            let gid_index = gid_index as i32;
-            // SAFETY: ffi
-            let errno =
-                unsafe { ibv_query_gid(inner_ctx.as_ptr(), port_num, gid_index, gid.as_mut_ptr()) };
-            // SAFETY: ffi init
-            Gid::from(unsafe { gid.assume_init() })
-        };
-
-        // SAFETY: POD FFI type
-        let mut inner_port_attr = unsafe { std::mem::zeroed() };
-        let errno =
-            unsafe { rdma_sys::___ibv_query_port(inner_ctx.as_ptr(), 1, &mut inner_port_attr) };
-
-        let ibv_dev = unsafe { NonNull::new_unchecked(dev.ffi_ptr()) };
         Ok(RxeContext {
             ibv_dev: ibv_dev,
             rxe_ctx: inner_ctx,
-            dev_attr: device_attr,
             port_attr: inner_port_attr,
-            gid: gid,
+            gid: gid.into(),
             qp_pool: HashMap::with_capacity(1024),
             mr_pool: HashMap::with_capacity(1024),
         })
@@ -122,7 +108,7 @@ impl RxeContext {
 
     // create cq
     pub fn create_completion_queue(
-        &self,
+        &mut self,
         cq_szie: u32,
         max_cqe: i32,
     ) -> Result<RxeCompletionQueue, Error> {
