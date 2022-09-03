@@ -1,122 +1,12 @@
-use std::cell::RefCell;
-use std::ptr::NonNull;
-use std::rc::Rc;
-
+use crate::rxe_context::RxeContext;
 use crate::rxe_pd::RxePd;
 use crate::rxe_verbs::{IbvMrType, RxeMrCopyDir, RxeMrState};
-use crate::{rxe_hdr::RxePktInfo, rxe_verbs::IbMrType};
-use nix::errno::Errno;
 use nix::Error;
 use rand;
-use rdma_sys::{ibv_access_flags, ibv_dereg_mr, ibv_mr, ibv_reg_mr};
+use rdma_sys::{ibv_access_flags, ibv_mr};
 use std::fmt::Debug;
-use tracing::{debug, error};
-
-impl RxePktInfo {
-    /// Copy data from Scatter Gather List to IBA Pacekt buffer
-    /// simulating DMA operations with memcpy
-    ///
-    /// # Arguments
-    /// * `dma`     - A SG list in rxe_dma_info
-    /// * `addr`    - payload base offset in IBA packet
-    /// * `length`  - IBA packet payload length, equals to min(MTU or dma.resid)
-    /// * `access` and `dir` TODO: is used for checking MemoryRegion
-    pub fn copy_data(
-        &mut self,
-        _access: u32,
-        dma: &mut librxe_sys::rxe_dma_info,
-        addr: usize,
-        length: u32,
-        _dir: RxeMrCopyDir,
-    ) -> Result<(), Error> {
-        // FIXME: no available rxe_mr for checking LKEY
-        if length == 0 {
-            return Ok(());
-        }
-        // MAYBE use sge_slice is more elegent
-        // get current SG entry
-        let mut sge_ptr = unsafe {
-            dma.__bindgen_anon_1
-                .__bindgen_anon_2
-                .as_mut()
-                .sge
-                .as_mut_ptr()
-                .add(dma.cur_sge as _)
-        };
-        let mut sge = unsafe { &mut *sge_ptr };
-
-        let mut offset = dma.sge_offset;
-        let mut resid = dma.resid;
-        // length is only possible less than or equal to resid
-        if length > resid {
-            return Err(Errno::EINVAL);
-        }
-
-        // filling the whole [0~length) iba payload buffer
-        let mut res_length = length;
-        let mut payload_buf = self.split_iba_pkt(addr);
-        let mut payload_buf_addr = payload_buf.as_mut_ptr();
-        while res_length > 0 {
-            let mut bytes = res_length;
-            if offset >= sge.length {
-                // current SG entry is finished
-                dma.cur_sge += dma.cur_sge + 1;
-                sge_ptr = unsafe { sge_ptr.add(1) };
-                sge = unsafe { &mut *sge_ptr };
-                offset = 0;
-                if dma.cur_sge >= dma.num_sge {
-                    return Err(Errno::ENOSPC);
-                }
-                continue;
-            }
-            // bytes is the actual length to make a copy from SG entry
-            if bytes > (sge.length - offset) {
-                bytes = sge.length - offset;
-            }
-            if bytes > 0 {
-                let iova = sge.addr + offset as u64;
-                unsafe {
-                    std::ptr::copy_nonoverlapping(iova as *const u8, payload_buf_addr, bytes as _);
-                }
-                offset = offset + bytes;
-                resid = resid - bytes;
-                res_length = res_length - bytes;
-                payload_buf_addr = unsafe { payload_buf_addr.add(bytes as _) };
-            }
-        }
-        self.unsplit_iba_pkt(payload_buf);
-        dma.sge_offset = offset;
-        dma.resid = resid;
-
-        Ok(())
-    }
-}
-
-// assume a page is 4kb
-pub const DUMMY_PAGE_SIZE: usize = 1 << 12;
-
-pub const RXE_BUF_PER_MAP: usize = DUMMY_PAGE_SIZE / std::mem::size_of::<RxePhysBuf>();
-
-#[derive(Debug, Clone, Copy)]
-struct RxePhysBuf {
-    pub addr: u64,
-    pub size: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RxeMap {
-    pub buf: [RxePhysBuf; RXE_BUF_PER_MAP],
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-struct RxeMapSet {
-    pub va: u64,
-    pub iova: u64,
-    pub length: usize,
-    pub nbuf: u32,
-    pub page_shift: usize,
-    pub page_mask: usize,
-}
+use std::ptr::NonNull;
+use tracing::debug;
 
 #[inline]
 pub fn rkey_is_mw(rkey: u32) -> bool {
@@ -126,63 +16,57 @@ pub fn rkey_is_mw(rkey: u32) -> bool {
 }
 #[derive(Clone)]
 pub struct RxeMr {
+    /// the internal `ibv_mr` pointer
+    pub inner_mr: ibv_mr,
     /// the protection domain the raw memory region belongs to
     pub pd: NonNull<RxePd>,
-    /// the internal `ibv_mr` pointer
-    pub inner_mr: NonNull<ibv_mr>,
     pub lkey: u32,
     pub rkey: u32,
     pub state: RxeMrState,
-    pub mr_type: IbMrType,
     pub access: ibv_access_flags,
     pub addr: *mut u8, // the userspace address start
     pub length: usize, // the userspace address length in bytes
-    // pub map_shift: usize,
-    // pub map_mask: usize,
-    // pub num_buf: u32,
-
-    // pub max_buf: u32,
-    // pub num_map: u32,
-
-    // pub cur_map_set: Option<Rc<RefCell<RxeMapSet>>>,
-    // pub next_map_set: Option<Rc<RefCell<RxeMapSet>>>,
     pub vmr_type: IbvMrType,
 }
 
 impl RxeMr {
     /// Register a raw memory region from protection domain
-    pub(crate) fn register_from_pd(
+    pub fn register_from_pd(
         pd: NonNull<RxePd>,
         addr: *mut u8,
         len: usize,
         access: ibv_access_flags,
     ) -> Result<RxeMr, Error> {
-        // SAFETY: ffi
-        // TODO: check safety
-        let inner_mr =
-        NonNull::new(unsafe { ibv_reg_mr(pd.as_ref().as_ptr(), addr.cast(), len, access.0 as _) })
-        .ok_or_else(|| {
-            let err = Error::last();
-                    error!(
-                "ibv_reg_mr err, arguments:\n pd:{:?},\n addr:{:?},\n len:{:?},\n access:{:?}\n, err info:{:?}",
-                pd, addr, len, access, err
-            );
-            err
-        })?;
+        let mut mr = unsafe {
+            let mut _mr = std::mem::MaybeUninit::<ibv_mr>::uninit();
+            std::ptr::write_bytes(_mr.as_mut_ptr(), 0, 1);
+            _mr.assume_init()
+        };
+        // init ibv_mr
+        mr.context = unsafe { (*pd.as_ptr()).ctx.as_mut().as_ptr() };
+        mr.pd = unsafe { (*pd.as_ptr()).as_ptr() };
+        mr.addr = addr as *mut libc::c_void;
+        mr.length = len;
+        mr.lkey = unsafe { RxeMr::gen_next_mr_key(pd.as_ref().ctx) };
+        let ib_access_remote = ibv_access_flags::IBV_ACCESS_REMOTE_ATOMIC
+            | ibv_access_flags::IBV_ACCESS_REMOTE_READ
+            | ibv_access_flags::IBV_ACCESS_REMOTE_WRITE;
+        mr.rkey = if access & ib_access_remote != ibv_access_flags(0) {
+            mr.lkey
+        } else {
+            0
+        };
+
         Ok(Self {
             pd: pd,
-            inner_mr: inner_mr,
-            lkey: unsafe { inner_mr.as_ref().lkey },
-            rkey: unsafe { inner_mr.as_ref().rkey },
+            inner_mr: mr,
+            lkey: mr.lkey,
+            rkey: mr.rkey,
             state: RxeMrState::RxeMrStateValid,
-
-            addr,
+            addr: addr,
             length: len,
-
             // keep the same assignment in rdma-core/libibverbs/cmd.c
             vmr_type: IbvMrType::IbvMrTypeMr,
-            // keep the same assignment  in rxe_mr.c/rxe_mr_init_user
-            mr_type: IbMrType::IbMrTypeUser,
             access: access,
         })
     }
@@ -196,15 +80,14 @@ impl RxeMr {
         self.rkey
     }
 
-    pub fn rxe_get_next_key(last_key: u32) -> u8 {
-        let mut key = 0;
+    /// generate a new memory region key, used for mr lkey and rkey
+    fn gen_next_mr_key(ctx: NonNull<RxeContext>) -> u32 {
         loop {
-            key = rand::random::<u8>();
-            if key != (last_key as u8) {
-                break;
+            let key = rand::random::<u32>();
+            if !unsafe { ctx.as_ref() }.mr_pool.contains_key(&key) {
+                return key;
             }
         }
-        key
     }
 
     /// return true means iova and length is in the memory region
@@ -266,7 +149,6 @@ impl Debug for RxeMr {
     #[allow(clippy::as_conversions)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Rxe MR")
-            .field("inner_mr", &self.inner_mr)
             .field("addr", &(self.addr as usize))
             .field("len", &self.length)
             .field("pd", &self.pd)
