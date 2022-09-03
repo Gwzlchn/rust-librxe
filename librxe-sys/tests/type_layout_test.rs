@@ -18,7 +18,9 @@ fn bindgen_test_layout_rxe_av_gid_addr_union() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_av_gid_addr_union_t>()))._sockaddr_in as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_av_gid_addr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr)._sockaddr_in) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -30,7 +32,9 @@ fn bindgen_test_layout_rxe_av_gid_addr_union() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_av_gid_addr_union_t>()))._sockaddr_in6 as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_av_gid_addr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr)._sockaddr_in6) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -55,7 +59,11 @@ fn bindgen_test_layout_rxe_av() {
         concat!("Alignment of ", stringify!(rxe_av))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).port_num as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).port_num) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -65,7 +73,11 @@ fn bindgen_test_layout_rxe_av() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).network_type as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).network_type) as usize - ptr as usize
+        },
         1usize,
         concat!(
             "Offset of field: ",
@@ -75,7 +87,11 @@ fn bindgen_test_layout_rxe_av() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).dmac as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).dmac) as usize - ptr as usize
+        },
         2usize,
         concat!(
             "Offset of field: ",
@@ -85,7 +101,11 @@ fn bindgen_test_layout_rxe_av() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).grh as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).grh) as usize - ptr as usize
+        },
         8usize,
         concat!(
             "Offset of field: ",
@@ -95,7 +115,11 @@ fn bindgen_test_layout_rxe_av() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).sgid_addr as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).sgid_addr) as usize - ptr as usize
+        },
         32usize,
         concat!(
             "Offset of field: ",
@@ -105,7 +129,11 @@ fn bindgen_test_layout_rxe_av() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_av>())).dgid_addr as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_av>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).dgid_addr) as usize - ptr as usize
+        },
         60usize,
         concat!(
             "Offset of field: ",
@@ -130,7 +158,11 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_t() {
         concat!("Alignment of ", stringify!(rxe_send_wr_ex_union_t))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_ex_union_t>())).imm_data as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).imm_data) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -141,7 +173,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_t>())).invalidate_rkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).invalidate_rkey) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -167,7 +201,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_rdma_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_rdma_t>())).remote_addr as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_rdma_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).remote_addr) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -179,7 +215,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_rdma_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_rdma_t>())).rkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_rdma_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).rkey) as usize - ptr as usize
         },
         8usize,
         concat!(
@@ -191,7 +229,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_rdma_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_rdma_t>())).reserved as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_rdma_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize
         },
         12usize,
         concat!(
@@ -217,8 +257,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_atomic_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_atomic_t>())).remote_addr as *const _
-                as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_atomic_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).remote_addr) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -230,8 +271,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_atomic_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_atomic_t>())).compare_add as *const _
-                as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_atomic_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).compare_add) as usize - ptr as usize
         },
         8usize,
         concat!(
@@ -243,7 +285,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_atomic_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_atomic_t>())).swap as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_atomic_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).swap) as usize - ptr as usize
         },
         16usize,
         concat!(
@@ -255,7 +299,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_atomic_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_atomic_t>())).rkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_atomic_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).rkey) as usize - ptr as usize
         },
         24usize,
         concat!(
@@ -267,7 +313,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_atomic_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_atomic_t>())).reserved as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_atomic_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize
         },
         28usize,
         concat!(
@@ -293,7 +341,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).remote_qpn as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).remote_qpn) as usize - ptr as usize
         },
         0usize,
         concat!(
@@ -305,7 +355,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).remote_qkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).remote_qkey) as usize - ptr as usize
         },
         4usize,
         concat!(
@@ -317,7 +369,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).pkey_index as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).pkey_index) as usize - ptr as usize
         },
         8usize,
         concat!(
@@ -329,7 +383,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).reserved as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).reserved) as usize - ptr as usize
         },
         10usize,
         concat!(
@@ -341,7 +397,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).ah_num as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).ah_num) as usize - ptr as usize
         },
         12usize,
         concat!(
@@ -352,7 +410,11 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).pad as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).pad) as usize - ptr as usize
+        },
         16usize,
         concat!(
             "Offset of field: ",
@@ -362,7 +424,11 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_ud_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_ex_union_ud_t>())).av as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_ud_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).av) as usize - ptr as usize
+        },
         32usize,
         concat!(
             "Offset of field: ",
@@ -386,7 +452,11 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
         concat!("Alignment of ", stringify!(rxe_send_wr_ex_union_mw_t))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).addr as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).addr) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -397,7 +467,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).length as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).length) as usize - ptr as usize
         },
         8usize,
         concat!(
@@ -409,7 +481,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).mr_lkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).mr_lkey) as usize - ptr as usize
         },
         16usize,
         concat!(
@@ -421,7 +495,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).mw_rkey as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).mw_rkey) as usize - ptr as usize
         },
         20usize,
         concat!(
@@ -432,7 +508,11 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).rkey as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).rkey) as usize - ptr as usize
+        },
         24usize,
         concat!(
             "Offset of field: ",
@@ -443,7 +523,9 @@ fn bindgen_test_layout_rxe_send_wr_ex_union_mw_t() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<rxe_send_wr_ex_union_mw_t>())).access as *const _ as usize
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_ex_union_mw_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).access) as usize - ptr as usize
         },
         28usize,
         concat!(
@@ -468,7 +550,11 @@ fn bindgen_test_layout_rxe_send_wr_wr_union_t() {
         concat!("Alignment of ", stringify!(rxe_send_wr_wr_union_t))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_wr_union_t>())).rdma as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_wr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).rdma) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -478,7 +564,11 @@ fn bindgen_test_layout_rxe_send_wr_wr_union_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_wr_union_t>())).atomic as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_wr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).atomic) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -488,7 +578,11 @@ fn bindgen_test_layout_rxe_send_wr_wr_union_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_wr_union_t>())).ud as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_wr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).ud) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -498,7 +592,11 @@ fn bindgen_test_layout_rxe_send_wr_wr_union_t() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr_wr_union_t>())).mw as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr_wr_union_t>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).mw) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -522,7 +620,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         concat!("Alignment of ", stringify!(rxe_send_wr))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).wr_id as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).wr_id) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -532,7 +634,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).num_sge as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).num_sge) as usize - ptr as usize
+        },
         8usize,
         concat!(
             "Offset of field: ",
@@ -542,7 +648,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).opcode as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).opcode) as usize - ptr as usize
+        },
         12usize,
         concat!(
             "Offset of field: ",
@@ -552,7 +662,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).send_flags as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).send_flags) as usize - ptr as usize
+        },
         16usize,
         concat!(
             "Offset of field: ",
@@ -562,7 +676,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).ex as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).ex) as usize - ptr as usize
+        },
         20usize,
         concat!(
             "Offset of field: ",
@@ -572,7 +690,11 @@ fn bindgen_test_layout_rxe_send_wr() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wr>())).wr as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wr>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).wr) as usize - ptr as usize
+        },
         24usize,
         concat!(
             "Offset of field: ",
@@ -596,7 +718,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         concat!("Alignment of ", stringify!(rxe_send_wqe))
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).wr as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).wr) as usize - ptr as usize
+        },
         0usize,
         concat!(
             "Offset of field: ",
@@ -606,7 +732,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).status as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).status) as usize - ptr as usize
+        },
         144usize,
         concat!(
             "Offset of field: ",
@@ -616,7 +746,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).state as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).state) as usize - ptr as usize
+        },
         148usize,
         concat!(
             "Offset of field: ",
@@ -626,7 +760,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).iova as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).iova) as usize - ptr as usize
+        },
         152usize,
         concat!(
             "Offset of field: ",
@@ -636,7 +774,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).mask as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).mask) as usize - ptr as usize
+        },
         160usize,
         concat!(
             "Offset of field: ",
@@ -646,7 +788,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).first_psn as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).first_psn) as usize - ptr as usize
+        },
         164usize,
         concat!(
             "Offset of field: ",
@@ -656,7 +802,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).last_psn as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).last_psn) as usize - ptr as usize
+        },
         168usize,
         concat!(
             "Offset of field: ",
@@ -666,7 +816,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).ack_length as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).ack_length) as usize - ptr as usize
+        },
         172usize,
         concat!(
             "Offset of field: ",
@@ -676,7 +830,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).ssn as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).ssn) as usize - ptr as usize
+        },
         176usize,
         concat!(
             "Offset of field: ",
@@ -686,7 +844,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).has_rd_atomic as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).has_rd_atomic) as usize - ptr as usize
+        },
         180usize,
         concat!(
             "Offset of field: ",
@@ -696,7 +858,11 @@ fn bindgen_test_layout_rxe_send_wqe() {
         )
     );
     assert_eq!(
-        unsafe { &(*(::std::ptr::null::<rxe_send_wqe>())).dma as *const _ as usize },
+        unsafe {
+            let uninit = ::std::mem::MaybeUninit::<rxe_send_wqe>::uninit();
+            let ptr = uninit.as_ptr();
+            ::std::ptr::addr_of!((*ptr).dma) as usize - ptr as usize
+        },
         184usize,
         concat!(
             "Offset of field: ",
