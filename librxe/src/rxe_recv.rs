@@ -1,22 +1,14 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::RefCell,
-    rc::Rc,
-};
-
 use crate::{
     rxe_context::RxeContext,
     rxe_hdr::{self, RxePktInfo, GSI_QKEY},
     rxe_net::{self, RxeSkb},
-    rxe_opcode::{
-        self,
-        rxe_hdr_mask::{self, RXE_GRH_MASK},
-    },
+    rxe_opcode::{self, rxe_hdr_mask},
     rxe_qp::{RxeQpState, RxeQueuePair},
     rxe_verbs::{self, pkey_match, IB_DEFAULT_PKEY_FULL},
 };
 use nix::{errno::Errno, Error};
 use rdma_sys::{ibv_opcode, ibv_qp_type};
+use std::{cell::RefCell, rc::Rc};
 use tracing::{error, warn};
 
 impl RxePktInfo {
@@ -52,12 +44,12 @@ impl RxePktInfo {
             }
         }
         if self.mask & rxe_hdr_mask::RXE_REQ_MASK != 0 {
-            if qp.resp.state != RxeQpState::QP_STATE_READY {
+            if qp.resp.state != RxeQpState::QpStateReady {
                 return Err(Errno::EINVAL);
             }
-        } else if qp.req.state == RxeQpState::QP_STATE_RESET
-            || qp.req.state == RxeQpState::QP_STATE_INIT
-            || qp.req.state == RxeQpState::QP_STATE_ERROR
+        } else if qp.req.state == RxeQpState::QpStateReset
+            || qp.req.state == RxeQpState::QpStateInit
+            || qp.req.state == RxeQpState::QpStateError
         {
             return Err(Errno::EINVAL);
         }
@@ -165,7 +157,6 @@ impl RxeSkb {
 
         let mask = pkt_info.mask;
         if mask & rxe_hdr_mask::RXE_REQ_MASK != 0 {
-            // pkt_info.qp.as_mut().unwrap().as_ref().borrow_mut().rxe_responder(&mut pkt_info);
             pkt_info
                 .qp
                 .as_ref()
@@ -174,14 +165,13 @@ impl RxeSkb {
                 .borrow_mut()
                 .rxe_responder(self.pkt_info.as_ptr())
         } else {
-            todo!()
-            // pkt_info
-            //     .borrow_mut()
-            //     .qp
-            //     .as_ref()
-            //     .unwrap()
-            //     .borrow_mut()
-            //     .rxec()
+            pkt_info
+                .qp
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .borrow_mut()
+                .rxe_completer(self.pkt_info.as_ptr())
         }
     }
     pub fn rxe_rcv(&mut self, ctx: &RxeContext) -> Result<(), Error> {
