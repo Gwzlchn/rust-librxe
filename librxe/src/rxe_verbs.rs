@@ -35,6 +35,18 @@ pub enum WqeState {
     WqeStateError,
 }
 
+impl PartialEq<u32> for WqeState {
+    fn eq(&self, other: &u32) -> bool {
+        *self as u32 == *other as u32
+    }
+}
+
+impl PartialEq<WqeState> for u32 {
+    fn eq(&self, other: &WqeState) -> bool {
+        *self as u32 == *other as u32
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum RxeMrState {
     RxeMrStateInvalid,
@@ -91,7 +103,7 @@ pub const RXE_ROCE_V2_SPORT: u16 = 0xC000;
 
 // defination from linux-kernel/upstream-kernel/include/rdma/ib_verbs.h
 const MAX_MTU_ARRAY_ENTRY: usize = 6;
-pub const ibv_mtu_enum_to_u32: [u32; MAX_MTU_ARRAY_ENTRY] = {
+pub const IBV_MTU_ENUM_TO_U32: [u32; MAX_MTU_ARRAY_ENTRY] = {
     let mut mtu_arr = [0u32; MAX_MTU_ARRAY_ENTRY];
     mtu_arr[ibv_mtu::IBV_MTU_256 as usize] = 256;
     mtu_arr[ibv_mtu::IBV_MTU_512 as usize] = 512;

@@ -4,13 +4,12 @@ use std::rc::Rc;
 
 use crate::rxe_hdr::RxePktInfo;
 use crate::rxe_opcode::{rxe_hdr_mask, RXE_OPCODE_INFO};
-use crate::rxe_qp::{RxeQpState, RxeQueuePair};
+use crate::rxe_qp::RxeQueuePair;
 use crate::rxe_verbs;
 use bytes::BytesMut;
 use etherparse::{IpHeader::*, PacketHeaders, TransportHeader::*, UdpHeader};
 use nix::sys::socket::{self, MsgFlags};
-use nix::Error;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 impl RxePktInfo {
     /// Receive UDP pacekt
@@ -36,23 +35,6 @@ impl RxePktInfo {
         pkt_info.mask = pkt_info.mask | RXE_OPCODE_INFO[pkt_info.opcode as usize].mask;
 
         pkt_info
-    }
-
-    /// send UDP packet
-    pub fn rxe_xmit_packet(&mut self, av: librxe_sys::rxe_av) -> Result<(), Error> {
-        let qp = self.qp.as_ref().unwrap().borrow();
-        let is_request = self.mask & rxe_hdr_mask::RXE_REQ_MASK != 0;
-        if (is_request && (qp.req.state != RxeQpState::QP_STATE_READY))
-            || (!is_request && (qp.resp.state != RxeQpState::QP_STATE_READY))
-        {
-            info!("Packet dropped. QP is not in ready state\n");
-            return Ok(());
-        }
-        // TODO rxe_icrc_generate
-
-        // dst ip addr
-
-        Ok(())
     }
 }
 
@@ -154,7 +136,7 @@ impl RxeSkb {
 
         debug!("ip pkt {:#02X?}", ip_pkt);
         unsafe {
-            crate::global_ip_pkt_out = ip_pkt.to_vec();
+            crate::GLOBAL_IP_PKT_OUT = ip_pkt.to_vec();
         }
         socket::sendto(sock, &ip_pkt, &dst_addr, MsgFlags::empty()).unwrap();
     }

@@ -27,10 +27,6 @@ pub struct RxePktInfo {
     pub opcode: u8,      /* bth opcode of packet */
 }
 
-/*
- * IBA header types and methods
- *
- */
 pub const RXE_ICRC_SIZE: u32 = 4;
 pub const RXE_MAX_HDR_LENGTH: u32 = 80;
 
@@ -179,15 +175,15 @@ pub struct RxeIeth {
 pub mod rxe_hdr_length {
     use super::*;
     pub type Type = u8;
-    pub const RXE_BTH_BYTES: Type = ::std::mem::size_of::<RxeBth>() as _;
-    pub const RXE_DETH_BYTES: Type = ::std::mem::size_of::<RxeDeth>() as _;
-    pub const RXE_IMMDT_BYTES: Type = ::std::mem::size_of::<RxeImmdt>() as _;
-    pub const RXE_RETH_BYTES: Type = ::std::mem::size_of::<RxeReth>() as _;
-    pub const RXE_AETH_BYTES: Type = ::std::mem::size_of::<RxeAeth>() as _;
-    pub const RXE_ATMACK_BYTES: Type = ::std::mem::size_of::<RxeAtmack>() as _;
-    pub const RXE_ATMETH_BYTES: Type = ::std::mem::size_of::<RxeAtmeth>() as _;
-    pub const RXE_IETH_BYTES: Type = ::std::mem::size_of::<RxeIeth>() as _;
-    pub const RXE_RDETH_BYTES: Type = ::std::mem::size_of::<RxeRdeth>() as _;
+    pub const RXE_BTH_BYTES: Type = ::std::mem::size_of::<RxeBth>() as u8;
+    pub const RXE_DETH_BYTES: Type = ::std::mem::size_of::<RxeDeth>() as u8;
+    pub const RXE_IMMDT_BYTES: Type = ::std::mem::size_of::<RxeImmdt>() as u8;
+    pub const RXE_RETH_BYTES: Type = ::std::mem::size_of::<RxeReth>() as u8;
+    pub const RXE_AETH_BYTES: Type = ::std::mem::size_of::<RxeAeth>() as u8;
+    pub const RXE_ATMACK_BYTES: Type = ::std::mem::size_of::<RxeAtmack>() as u8;
+    pub const RXE_ATMETH_BYTES: Type = ::std::mem::size_of::<RxeAtmeth>() as u8;
+    pub const RXE_IETH_BYTES: Type = ::std::mem::size_of::<RxeIeth>() as u8;
+    pub const RXE_RDETH_BYTES: Type = ::std::mem::size_of::<RxeRdeth>() as u8;
 }
 
 impl RxePktInfo {
