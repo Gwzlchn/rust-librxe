@@ -1,3 +1,4 @@
+use crate::rxe_context::RxeContext;
 use crate::rxe_hdr::bth_mask;
 use crate::rxe_pd::RxePd;
 use crate::rxe_verbs::RdatmResState;
@@ -6,10 +7,10 @@ use crate::{rxe_post_recv, rxe_post_send, rxe_verbs};
 use async_rdma::queue_pair::{QueuePairEndpoint, QueuePairInitAttr};
 use derivative::Derivative;
 use libc::c_int;
+use librxe_sys::{rxe_queue_init, rxe_recv_wqe, rxe_send_wqe};
 use nix::Error;
 use rdma_sys::{
-    ibv_access_flags, ibv_modify_qp, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state,
-    ibv_send_wr, ibv_sge,
+    ibv_access_flags, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state, ibv_send_wr, ibv_sge,
 };
 use std::alloc::{alloc, Layout};
 use std::cell::RefCell;
@@ -36,12 +37,12 @@ pub struct RxeSrq {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum RxeQpState {
     #[default]
-    QP_STATE_RESET,
-    QP_STATE_INIT,
-    QP_STATE_READY,
-    QP_STATE_DRAIN,   /* req only */
-    QP_STATE_DRAINED, /* req only */
-    QP_STATE_ERROR,
+    QpStateReset,
+    QpStateInit,
+    QpStateReady,
+    QpStateDrain,   /* req only */
+    QpStateDrained, /* req only */
+    QpStateError,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Derivative)]
@@ -132,9 +133,8 @@ pub struct RxeRespInfo {
 
 #[derive(Clone)]
 pub struct RxeQueuePair {
+    pub inner_qp: librxe_sys::rxe_qp,
     pub pd: NonNull<RxePd>,
-    // This variable should be deprecated in the future
-    pub inner_qp: NonNull<librxe_sys::rxe_qp>,
     pub qpn: u32,
     pub attr: NonNull<rdma_sys::ibv_qp_attr>,
 
@@ -160,8 +160,8 @@ pub struct RxeQueuePair {
 
 impl RxeQueuePair {
     /// get `ibv_qp` pointer
-    pub fn as_ptr(&self) -> *mut ibv_qp {
-        unsafe { &mut (*self.inner_qp.as_ptr()).vqp.qp_union.qp as *mut ibv_qp }
+    pub fn as_ptr(&mut self) -> *mut ibv_qp {
+        unsafe { &mut self.inner_qp.vqp.qp_union.qp as *mut ibv_qp }
     }
 
     /// get queue pair endpoint
@@ -177,36 +177,19 @@ impl RxeQueuePair {
         pd: NonNull<RxePd>,
         qp_init_attr: &mut QueuePairInitAttr,
     ) -> Result<RxeQueuePair, Error> {
-        let pd_ptr = unsafe { pd.as_ref().as_ptr() };
-        let ibv_qp = NonNull::new(unsafe {
-            rdma_sys::ibv_create_qp(pd_ptr, &mut qp_init_attr.qp_init_attr_inner)
-        })
-        .expect("create qp failed");
-        let rqp = librxe_sys::to_rqp(ibv_qp.as_ptr()).unwrap();
-        let rqp_ptr = NonNull::new(rqp).unwrap();
-        let qpn = librxe_sys::qp_num(rqp);
+        let pd_ptr = unsafe { (*pd.as_ptr()).as_ptr() };
+        let mut qp = librxe_sys::rxe_qp::default();
 
-        let mut attr_ptr = unsafe {
-            NonNull::new(alloc(Layout::new::<rdma_sys::ibv_qp_attr>()) as *mut rdma_sys::ibv_qp_attr).unwrap()
-        };
-        unsafe {
-            rdma_sys::ibv_query_qp(
-                ibv_qp.as_ptr(),
-                attr_ptr.as_mut(),
-                rdma_sys::ibv_qp_attr_mask::IBV_QP_STATE.0 as _,
-                &mut qp_init_attr.qp_init_attr_inner,
-            );
-        }
-        let src_port = ((fxhash::hash32(&qpn) as u16) & 0x3FFF) + rxe_verbs::RXE_ROCE_V2_SPORT;
-
-        let sock_fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_UDP) };
-        if sock_fd < 0 {
-            panic!("create raw socket failed");
-        }
-        unsafe {
+        // rxe_qp_init_req
+        // create raw socket
+        let sock_fd = unsafe {
+            let _sock_fd = libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_UDP);
+            if _sock_fd < 0 {
+                panic!("create raw socket failed");
+            }
             let on = 1;
             let ret = libc::setsockopt(
-                sock_fd,
+                _sock_fd,
                 libc::IPPROTO_IP,
                 libc::IP_HDRINCL,
                 &on as *const _ as *const libc::c_void,
@@ -215,12 +198,55 @@ impl RxeQueuePair {
             if ret < 0 {
                 panic!("setting IP_HDRINCL to raw socket failed");
             }
-        }
-
-        let mtu = unsafe { rxe_verbs::ibv_mtu_enum_to_u32[attr_ptr.as_ref().path_mtu as usize] };
-
+            _sock_fd
+        };
+        let qpn = unsafe { RxeQueuePair::gen_next_qp_num(pd.as_ref().ctx) };
+        let src_port = ((fxhash::hash32(&qpn) as u16) & 0x3FFF) + rxe_verbs::RXE_ROCE_V2_SPORT;
+        let mut req_wqe_size = std::cmp::max(
+            qp_init_attr.qp_init_attr_inner.cap.max_send_sge
+                * (std::mem::size_of::<ibv_sge>() as u32),
+            qp_init_attr.qp_init_attr_inner.cap.max_inline_data,
+        );
+        qp.sq.max_sge = req_wqe_size / (std::mem::size_of::<ibv_sge>() as u32);
+        qp.sq.max_inline = req_wqe_size;
+        req_wqe_size += std::mem::size_of::<rxe_send_wqe>() as u32;
+        qp.sq.queue = unsafe {
+            rxe_queue_init(
+                qp_init_attr.qp_init_attr_inner.cap.max_send_wr,
+                req_wqe_size,
+            )
+        };
         let mut req = RxeReqInfo::default();
-        req.wqe_index = unsafe { librxe_sys::load_producer_index((*rqp).sq.queue) };
+        req.wqe_index = librxe_sys::load_producer_index(qp.sq.queue);
+
+        // rxe_qp_init_resp
+        qp.rq.max_sge = qp_init_attr.qp_init_attr_inner.cap.max_recv_sge;
+        let resp_wqe_size = std::mem::size_of::<rxe_recv_wqe>() as u32
+            + (std::mem::size_of::<ibv_sge>() as u32 * qp.rq.max_sge);
+        qp.rq.queue = unsafe {
+            rxe_queue_init(
+                qp_init_attr.qp_init_attr_inner.cap.max_recv_wr,
+                resp_wqe_size,
+            )
+        };
+        unsafe { libc::pthread_spin_init(&mut qp.rq.lock, libc::PTHREAD_PROCESS_PRIVATE) };
+        unsafe { libc::pthread_spin_init(&mut qp.sq.lock, libc::PTHREAD_PROCESS_PRIVATE) };
+
+        // set verbs_qp union
+        qp.vqp.qp_union.qp.qp_context = qp_init_attr.qp_init_attr_inner.qp_context;
+        qp.vqp.qp_union.qp.qp_type = qp_init_attr.qp_init_attr_inner.qp_type;
+        qp.vqp.qp_union.qp.qp_num = qpn;
+
+        qp.vqp.qp_union.qp.send_cq = qp_init_attr.qp_init_attr_inner.send_cq;
+        qp.vqp.qp_union.qp.recv_cq = qp_init_attr.qp_init_attr_inner.recv_cq;
+        qp.vqp.qp_union.qp.srq = qp_init_attr.qp_init_attr_inner.srq;
+        qp.vqp.qp_union.qp.pd = pd_ptr;
+
+        let attr_ptr = unsafe {
+            NonNull::new(alloc(Layout::new::<rdma_sys::ibv_qp_attr>()) as *mut rdma_sys::ibv_qp_attr).unwrap()
+        };
+
+        let mtu = rxe_verbs::IBV_MTU_ENUM_TO_U32[0];
 
         // cq
         let rcq =
@@ -232,7 +258,7 @@ impl RxeQueuePair {
 
         Ok(RxeQueuePair {
             pd: pd,
-            inner_qp: rqp_ptr,
+            inner_qp: qp,
             qpn: qpn,
             attr: attr_ptr,
             srq: None,
@@ -257,10 +283,6 @@ impl RxeQueuePair {
         attr: &mut ibv_qp_attr,
         attr_mask: ibv_qp_attr_mask,
     ) -> Result<(), Error> {
-        let errno = unsafe { ibv_modify_qp(self.as_ptr(), attr, attr_mask.0 as i32) };
-        if errno != 0_i32 {
-            return Err(Error::last());
-        }
         if attr_mask & ibv_qp_attr_mask::IBV_QP_MAX_QP_RD_ATOMIC != ibv_qp_attr_mask(0) {
             let max_rd_atomic = if attr.max_rd_atomic != 0 {
                 attr.max_rd_atomic.next_power_of_two()
@@ -329,7 +351,7 @@ impl RxeQueuePair {
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_PATH_MTU) != ibv_qp_attr_mask(0) {
             unsafe {
                 self.attr.as_mut().path_mtu = attr.path_mtu;
-                self.mtu = rxe_verbs::ibv_mtu_enum_to_u32[attr.path_mtu as usize];
+                self.mtu = rxe_verbs::IBV_MTU_ENUM_TO_U32[attr.path_mtu as usize];
             }
             debug!("QP#{} set path mtu {}", self.qpn, self.mtu);
         }
@@ -395,6 +417,7 @@ impl RxeQueuePair {
         }
 
         if (attr_mask & ibv_qp_attr_mask::IBV_QP_STATE) != ibv_qp_attr_mask(0) {
+            self.inner_qp.vqp.qp_union.qp.state = attr.qp_state;
             unsafe { self.attr.as_mut().qp_state = attr.qp_state };
             match attr.qp_state {
                 ibv_qp_state::IBV_QPS_RESET => {
@@ -403,16 +426,16 @@ impl RxeQueuePair {
                     debug!("QP#{} state -> RESET", self.qpn);
                 }
                 ibv_qp_state::IBV_QPS_INIT => {
-                    self.req.state = RxeQpState::QP_STATE_INIT;
-                    self.resp.state = RxeQpState::QP_STATE_INIT;
+                    self.req.state = RxeQpState::QpStateInit;
+                    self.resp.state = RxeQpState::QpStateInit;
                     debug!("QP#{} state -> INIT", self.qpn);
                 }
                 ibv_qp_state::IBV_QPS_RTR => {
-                    self.resp.state = RxeQpState::QP_STATE_READY;
+                    self.resp.state = RxeQpState::QpStateReady;
                     debug!("QP#{} state -> RTR", self.qpn);
                 }
                 ibv_qp_state::IBV_QPS_RTS => {
-                    self.req.state = RxeQpState::QP_STATE_READY;
+                    self.req.state = RxeQpState::QpStateReady;
                     debug!("QP#{} state -> RTR", self.qpn);
                 }
                 ibv_qp_state::IBV_QPS_SQD => {
@@ -424,8 +447,8 @@ impl RxeQueuePair {
                     warn!("QP#{} state -> SQE, unexpected state", self.qpn);
                 }
                 ibv_qp_state::IBV_QPS_ERR => {
-                    self.req.state = RxeQpState::QP_STATE_ERROR;
-                    self.resp.state = RxeQpState::QP_STATE_ERROR;
+                    self.req.state = RxeQpState::QpStateError;
+                    self.resp.state = RxeQpState::QpStateError;
                     unsafe {
                         self.attr.as_mut().qp_state = ibv_qp_state::IBV_QPS_ERR;
                     }
@@ -439,9 +462,19 @@ impl RxeQueuePair {
         Ok(())
     }
 
+    /// generate a new memory region key, used for mr lkey and rkey
+    fn gen_next_qp_num(ctx: NonNull<RxeContext>) -> u32 {
+        loop {
+            let key = rand::random::<u32>() % 100;
+            if !unsafe { ctx.as_ref() }.qp_pool.contains_key(&key) {
+                return key;
+            }
+        }
+    }
+
     pub fn set_error_state(&mut self) {
-        self.req.state = RxeQpState::QP_STATE_ERROR;
-        self.resp.state = RxeQpState::QP_STATE_ERROR;
+        self.req.state = RxeQpState::QpStateError;
+        self.resp.state = RxeQpState::QpStateError;
         unsafe {
             self.attr.as_mut().qp_state = ibv_qp_state::IBV_QPS_ERR;
         }
@@ -550,23 +583,23 @@ impl RxeQueuePair {
     }
 
     pub fn qp_type(&self) -> rdma_sys::ibv_qp_type::Type {
-        librxe_sys::qp_type(self.inner_qp.as_ptr())
+        unsafe { self.inner_qp.vqp.qp_union.qp.qp_type }
     }
     /// get send queue buffer pointer
     pub fn sq_queue(&self) -> *mut librxe_sys::rxe_queue_buf {
-        unsafe { (*self.inner_qp.as_ptr()).sq.queue }
+        self.inner_qp.sq.queue
     }
 
     /// get receive queue buffer pointer
     pub fn rq_queue(&self) -> *mut librxe_sys::rxe_queue_buf {
-        unsafe { (*self.inner_qp.as_ptr()).rq.queue }
+        self.inner_qp.rq.queue
     }
 
     // post a single receive request
     // use system call to kernel
     #[inline]
     pub fn post_receive(
-        &self,
+        &mut self,
         mr: &RxeMr,
         data_addr: *mut u8,
         data_length: u32, // in bytes
