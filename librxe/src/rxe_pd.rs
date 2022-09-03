@@ -6,30 +6,33 @@ use crate::{
 };
 use async_rdma::queue_pair::QueuePairInitAttr;
 use nix::{errno::Errno, Error};
-use rdma_sys::{ibv_access_flags, ibv_alloc_pd, ibv_dealloc_pd, ibv_pd};
-use std::{cell::RefCell, ptr::NonNull, rc::Rc, sync::Arc};
+use rdma_sys::{ibv_access_flags, ibv_pd};
+use std::{cell::RefCell, ptr::NonNull, rc::Rc};
 
 /// Protection Domain Wrapper
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RxePd {
-    /// The device context
-    pub(crate) ctx: NonNull<RxeContext>,
     /// Internal `ibv_pd` pointer
-    inner_pd: NonNull<ibv_pd>,
+    pub inner_pd: ibv_pd,
+    /// The device context
+    pub ctx: NonNull<RxeContext>,
 }
 
 impl RxePd {
     /// Get pointer to the internal `ibv_pd`
-    pub(crate) fn as_ptr(&self) -> *mut ibv_pd {
-        self.inner_pd.as_ptr()
+    pub fn as_ptr(&mut self) -> *mut ibv_pd {
+        &mut self.inner_pd as *mut ibv_pd
     }
 
     /// Create a protection domain
-    pub(crate) fn create(ctx: NonNull<RxeContext>) -> Result<RxePd, Error> {
-        // SAFETY: ffi
-        // TODO: check safety
-        let inner_pd = NonNull::new(unsafe { ibv_alloc_pd(ctx.as_ref().as_ptr()) }).unwrap();
-        Ok(Self { ctx: ctx, inner_pd })
+    pub fn create(mut ctx: NonNull<RxeContext>) -> Result<RxePd, Error> {
+        let inner_pd = unsafe {
+            ibv_pd {
+                context: ctx.as_mut().as_ptr(),
+                handle: 0xFFFF, // FIXME
+            }
+        };
+        Ok(Self { ctx, inner_pd })
     }
     // register mr
     pub fn rxe_reg_mr(
@@ -95,6 +98,7 @@ impl RxePd {
             }
         }
     }
+
     /// copy data in or out of a wqe, i.e. sg list
     /// under the control of a dma descriptor
     ///
@@ -200,14 +204,6 @@ impl RxePd {
         dma.resid = dma_resid;
 
         Ok(())
-    }
-}
-
-impl Drop for RxePd {
-    fn drop(&mut self) {
-        // SAFETY: ffi
-        // TODO: check safety
-        unsafe { ibv_dealloc_pd(self.as_ptr()) };
     }
 }
 
