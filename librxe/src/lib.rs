@@ -1,9 +1,8 @@
 use nix::Error;
 use rdma_sys::{ibv_qp_state, ibv_qp_type, ibv_send_flags, ibv_wr_opcode};
-use rxe_qp::RxeQueuePair;
-pub mod rxe_av;
 #[allow(warnings)]
-//pub mod rxe_comp;
+pub mod rxe_av;
+pub mod rxe_comp;
 pub mod rxe_context;
 pub mod rxe_cq;
 pub mod rxe_hdr;
@@ -343,13 +342,6 @@ fn post_send_db(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
     Ok(())
 }
 
-fn post_send_db_user_space(ibqp: &mut rdma_sys::ibv_qp) -> Result<(), Error> {
-    let rqp = librxe_sys::to_rqp(ibqp).expect("unable to find rxe_qp from ib qp");
-    let rqp = unsafe { &mut *rqp };
-    //RxeQueuePair::rxe_requester(rqp);
-    todo!()
-}
-
 fn rxe_post_one_recv(
     rq: *mut librxe_sys::rxe_wq,
     recv_wr: *mut rdma_sys::ibv_recv_wr,
@@ -400,4 +392,4 @@ fn rxe_post_one_recv(
     Ok(())
 }
 
-pub static mut global_ip_pkt_out: Vec<u8> = Vec::<u8>::new();
+pub static mut GLOBAL_IP_PKT_OUT: Vec<u8> = Vec::<u8>::new();
