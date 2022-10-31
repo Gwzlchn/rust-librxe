@@ -164,7 +164,7 @@ impl RxePd {
                 }
                 // current SG entry is finished
                 // get next sge, it may be in another memory region
-                dma.cur_sge += dma.cur_sge + 1;
+                dma.cur_sge += 1;
                 sge_ptr = unsafe { sge_ptr.add(1) };
 
                 dma_offset = 0;

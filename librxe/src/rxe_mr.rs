@@ -1,7 +1,7 @@
 use crate::rxe_context::RxeContext;
 use crate::rxe_pd::RxePd;
 use crate::rxe_verbs::{IbvMrType, RxeMrCopyDir, RxeMrState};
-use nix::Error;
+use nix::{errno::Errno, Error};
 use rand;
 use rdma_sys::{ibv_access_flags, ibv_mr};
 use std::fmt::Debug;
@@ -141,6 +141,52 @@ impl RxeMr {
             std::ptr::copy_nonoverlapping(src, dst, length);
         }
 
+        Ok(())
+    }
+
+    pub fn advance_dma_data(dma: &mut librxe_sys::rxe_dma_info, length: u32) -> Result<(), Error> {
+        // MAYBE use sge_slice is more elegent
+        // get current SG entry
+        let mut sge_ptr = unsafe {
+            dma.__bindgen_anon_1
+                .__bindgen_anon_2
+                .as_mut()
+                .sge
+                .as_mut_ptr()
+                .add(dma.cur_sge as _)
+        };
+        let mut sge = match unsafe { sge_ptr.as_mut() } {
+            None => return Err(Errno::EINVAL),
+            Some(sge) => sge,
+        };
+
+        let mut dma_offset = dma.sge_offset;
+        let mut dma_resid = dma.resid;
+
+        let mut res_length = length;
+        while res_length != 0 {
+            if dma_offset >= sge.length {
+                dma.cur_sge += 1;
+                sge_ptr = unsafe { sge_ptr.add(1) };
+
+                dma_offset = 0;
+                if dma.cur_sge >= dma.num_sge {
+                    return Err(Errno::ENOSPC);
+                }
+                // sge_ptr here should point to a valid SG entry
+                sge = unsafe { sge_ptr.as_mut().unwrap() };
+            }
+            let bytes = if res_length > sge.length - dma_offset {
+                sge.length - dma_offset
+            } else {
+                res_length
+            };
+            dma_offset += bytes;
+            dma_resid -= bytes;
+            res_length -= bytes;
+        }
+        dma.sge_offset = dma_offset;
+        dma.resid = dma_resid;
         Ok(())
     }
 }

@@ -1,14 +1,20 @@
 use crate::{
     rxe_cq::{RxeCompletionQueue, RxeCqe},
-    rxe_hdr::{aeth_syndrome, bth_mask, RxePktInfo, RXE_ICRC_SIZE},
+    rxe_hdr::{
+        aeth_syndrome,
+        bth_mask::{self},
+        RxePktInfo, RXE_ICRC_SIZE,
+    },
     rxe_mr,
     rxe_net::RxeSkb,
     rxe_opcode::{
         rxe_hdr_mask::{self, RXE_GRH_MASK},
         RXE_OPCODE_INFO,
     },
-    rxe_qp::{RxeQpState, RxeQueuePair},
-    rxe_verbs::{psn_compare, RxeMrCopyDir, RxeMrLookupType, IB_DEFAULT_PKEY_FULL},
+    rxe_qp::{self, RxeQpState, RxeQueuePair},
+    rxe_verbs::{
+        psn_compare, RdatmResState, RxeMrCopyDir, RxeMrLookupType, RxeMrState, IB_DEFAULT_PKEY_FULL,
+    },
 };
 use bytes::BytesMut;
 use libc::c_int;
@@ -32,6 +38,7 @@ enum RespState {
     RespstChkRkey,
     RespstExecute,
     RespstReadReply,
+    RespstAtomicReply,
     RespstComplete,
     RespstAcknowledge,
     RespstCleanup,
@@ -74,6 +81,7 @@ impl fmt::Display for RespState {
             RespState::RespstChkRkey => write!(f, "CHK_RKEY"),
             RespState::RespstExecute => write!(f, "EXECUTE"),
             RespState::RespstReadReply => write!(f, "READ_REPLY"),
+            RespState::RespstAtomicReply => write!(f, "RESPST_ATOMIC_REPLY"),
             RespState::RespstComplete => write!(f, "COMPLETE"),
             RespState::RespstAcknowledge => write!(f, "ACKNOWLEDGE"),
             RespState::RespstCleanup => write!(f, "CLEANUP"),
@@ -431,21 +439,49 @@ impl RxeQueuePair {
         {
             return RespState::RespstErrRkeyViolation;
         }
-        self.resp.va = self.resp.va + data_len as u64;
-        self.resp.resid = self.resp.resid - data_len as u32;
+        self.resp.va += data_len as u64;
+        self.resp.resid -= data_len as u32;
 
         return RespState::RespstNone;
     }
 
-    #[inline]
-    fn process_atomic(&mut self, _pkt_info: &RxePktInfo) -> RespState {
-        // TODO
-        return RespState::RespstNone;
-    }
+    fn rxe_prepare_res(
+        &mut self,
+        pkt_info: &mut RxePktInfo,
+        rxe_type: u32,
+    ) -> Rc<RefCell<rxe_qp::RespRes>> {
+        let mut res = self.resp.resources.get_mut(self.resp.res_head).unwrap();
+        // self.rxe_advance_resp_resource();
+        self.resp.res_head += 1;
+        if unsafe { self.resp.res_head == self.attr.as_ref().max_dest_rd_atomic as usize } {
+            self.resp.res_head = 0;
+        }
 
-    #[inline]
-    fn read_reply(&mut self, _pkt_info: &RxePktInfo) -> RespState {
-        todo!()
+        res.resp_type = 0; // free_rd_atomic_resource
+        res.resp_type = rxe_type;
+        res.replay = 0;
+        match rxe_type {
+            rxe_hdr_mask::RXE_READ_MASK => {
+                res.read.va = self.resp.va + self.resp.offset;
+                res.read.va_org = self.resp.va + self.resp.offset;
+                res.read.resid = self.resp.resid;
+                res.read.length = self.resp.resid;
+                res.read.rkey = self.resp.rkey;
+
+                let pkts = std::cmp::max((pkt_info.reth_len() + self.mtu - 1) / self.mtu, 1);
+                res.first_psn = pkt_info.psn;
+                res.cur_psn = pkt_info.psn;
+                res.last_psn = (pkt_info.psn + pkts - 1) & bth_mask::BTH_PSN_MASK;
+                res.state = RdatmResState::RdatmResStateNew;
+            }
+            rxe_hdr_mask::RXE_ATOMIC_MASK => {
+                res.first_psn = pkt_info.psn;
+                res.last_psn = pkt_info.psn;
+                res.cur_psn = pkt_info.psn;
+            }
+            _ => {}
+        };
+        return Rc::new(RefCell::new(*res));
     }
 
     fn prepare_ack_packet(
@@ -496,6 +532,25 @@ impl RxeQueuePair {
             self,
             &self.pri_av,
         )
+    }
+
+    fn rxe_recheck_mr(&mut self, rkey: u32) -> Option<Rc<RefCell<rxe_mr::RxeMr>>> {
+        if rxe_mr::rkey_is_mw(rkey) {
+            // TODO
+            return None;
+        }
+        let mr = unsafe { self.pd.as_ref().ctx.as_ref().rxe_pool_get_mr(rkey >> 8) };
+        // TODO
+        return None;
+        //return Some(*mr.unwrap());
+    }
+
+    fn read_reply(&mut self, req_pkt: &mut RxePktInfo) -> RespState {
+        todo!()
+    }
+
+    fn atomic_reply(&mut self, pkt: &mut RxePktInfo) -> RespState {
+        todo!()
     }
     #[inline]
     fn send_ack(&mut self, pkt_info: &mut RxePktInfo, syndrome: u8, psn: u32) {
@@ -560,11 +615,9 @@ impl RxeQueuePair {
             }
         } else if pkt_info.mask & rxe_hdr_mask::RXE_READ_MASK != 0 {
             self.resp.msn += 1;
+            return RespState::RespstReadReply;
         } else if pkt_info.mask & rxe_hdr_mask::RXE_ATOMIC_MASK != 0 {
-            let err = self.process_atomic(pkt_info);
-            if err != RespState::RespstNone {
-                return err;
-            }
+            return RespState::RespstAtomicReply;
         } else {
             warn!("execute funtion should not reach this branch");
         }
@@ -688,21 +741,59 @@ impl RxeQueuePair {
                 RespState::RespstExecute => state = self.execute(pkt_info),
                 RespState::RespstComplete => state = self.do_complete(pkt_info),
                 RespState::RespstReadReply => state = self.read_reply(pkt_info),
+                RespState::RespstAtomicReply => state = self.atomic_reply(pkt_info),
                 RespState::RespstAcknowledge => state = self.acknowledge(pkt_info),
                 RespState::RespstCleanup => state = self.cleanup(),
                 RespState::RespstDuplicateRequest => todo!(),
-                RespState::RespstErrMalformedWqe => todo!(),
-                RespState::RespstErrUnsupportedOpcode => todo!(),
-                RespState::RespstErrMisalignedAtomic => todo!(),
-                RespState::RespstErrPsnOutOfSeq => todo!(),
-                RespState::RespstErrMissingOpcodeFirst => todo!(),
-                RespState::RespstErrMissingOpcodeLastC => todo!(),
+                RespState::RespstErrPsnOutOfSeq => {
+                    self.send_ack(
+                        pkt_info,
+                        aeth_syndrome::AETH_NAK_PSN_SEQ_ERROR,
+                        self.resp.psn,
+                    );
+                    state = RespState::RespstCleanup;
+                }
+                RespState::RespstErrMalformedWqe => {
+                    self.do_class_ac_error(
+                        aeth_syndrome::AETH_NAK_REM_OP_ERR,
+                        ibv_wc_status::IBV_WC_LOC_QP_OP_ERR,
+                    );
+                    state = RespState::RespstComplete;
+                }
+                RespState::RespstErrTooManyRdmaAtmReq
+                | RespState::RespstErrMissingOpcodeFirst
+                | RespState::RespstErrMissingOpcodeLastC
+                | RespState::RespstErrUnsupportedOpcode
+                | RespState::RespstErrMisalignedAtomic => {
+                    self.do_class_ac_error(
+                        aeth_syndrome::AETH_NAK_INVALID_REQ,
+                        ibv_wc_status::IBV_WC_REM_INV_REQ_ERR,
+                    );
+                    state = RespState::RespstComplete;
+                },
                 RespState::RespstErrMissingOpcodeLastD1e => todo!(),
-                RespState::RespstErrTooManyRdmaAtmReq => todo!(),
                 RespState::RespstErrRnr => todo!(),
-                RespState::RespstErrRkeyViolation => todo!(),
+                RespState::RespstErrRkeyViolation => {
+                    if self.qp_type() == ibv_qp_type::IBV_QPT_RC {
+                        self.do_class_ac_error(
+                            aeth_syndrome::AETH_NAK_REM_ACC_ERR,
+                            ibv_wc_status::IBV_WC_REM_ACCESS_ERR,
+                        );
+                        state = RespState::RespstComplete;
+                    };
+                    // TODO SRQ/UD
+                }
                 RespState::RespstErrInvalidateRkey => todo!(),
-                RespState::RespstErrLength => todo!(),
+                RespState::RespstErrLength => {
+                    if self.qp_type() == ibv_qp_type::IBV_QPT_RC {
+                        self.do_class_ac_error(
+                            aeth_syndrome::AETH_NAK_INVALID_REQ,
+                            ibv_wc_status::IBV_WC_REM_INV_REQ_ERR,
+                        );
+                        state = RespState::RespstComplete;
+                    };
+                    // TODO SRQ/UD
+                }
                 RespState::RespstErrCqOverflow => todo!(),
                 RespState::RespstError => {
                     self.resp.goto_error = 0;

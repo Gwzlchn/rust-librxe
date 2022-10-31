@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::mem::size_of;
-use std::net::{SocketAddr, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::rc::Rc;
 
 use crate::rxe_hdr::RxePktInfo;
@@ -138,7 +138,7 @@ impl RxeSkb {
                 .as_ref()
                 .sock
         };
-        let mut _dst_addr =self.ipv4_hdr.destination;
+        let mut _dst_addr = self.ipv4_hdr.destination;
         _dst_addr.reverse();
         let dst_addr = SocketAddr::new(
             std::net::IpAddr::V4(Ipv4Addr::from(_dst_addr)),

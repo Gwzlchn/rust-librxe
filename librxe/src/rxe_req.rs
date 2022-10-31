@@ -1,5 +1,6 @@
 use crate::rxe_av::rxe_get_av;
 use crate::rxe_hdr::*;
+use crate::rxe_mr::RxeMr;
 use crate::rxe_net::RxeSkb;
 use crate::rxe_opcode::{rxe_hdr_mask, rxe_wr_mask, wr_opcode_mask, RXE_OPCODE_INFO};
 use crate::rxe_qp::{RxeQpState, RxeQueuePair};
@@ -13,14 +14,85 @@ use rdma_sys::{ibv_opcode, ibv_qp_type, ibv_send_flags, ibv_wc_status, ibv_wr_op
 use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use tracing::{debug, error};
 
 impl RxeQueuePair {
+    fn retry_first_write_send(&mut self, wqe: &mut librxe_sys::rxe_send_wqe, npsn: u32) {
+        for _ in 0..npsn {
+            let to_send = if wqe.dma.resid > self.mtu {
+                self.mtu
+            } else {
+                wqe.dma.resid
+            };
+            self.req.opcode = self.next_opcode(wqe, wqe.wr.opcode).unwrap() as _;
+            if (wqe.wr.send_flags & ibv_send_flags::IBV_SEND_INLINE.0) != 0 {
+                wqe.dma.resid -= to_send;
+                wqe.dma.sge_offset += to_send;
+            } else {
+                RxeMr::advance_dma_data(&mut wqe.dma, to_send).unwrap();
+            }
+        }
+    }
+
+    fn req_retry(&mut self) {
+        let sq_buf = self.sq_queue();
+        let prod = librxe_sys::load_producer_index(sq_buf);
+        let cons = librxe_sys::load_consumer_index(sq_buf);
+        self.req.wqe_index = cons;
+        self.req.psn = self.comp.psn;
+        self.req.opcode = -1;
+        let mut first = true;
+
+        let mut wqe_index = cons;
+        while wqe_index != prod {
+            let wqe = unsafe {
+                &mut *(librxe_sys::addr_from_index::<librxe_sys::rxe_send_wqe>(sq_buf, wqe_index))
+            };
+            let mask = wr_opcode_mask(self.qp_type(), wqe.wr.opcode);
+            if wqe.state == WqeState::WqeStatePosted {
+                break;
+            }
+            if wqe.state == WqeState::WqeStateDone {
+                continue;
+            }
+            wqe.iova = if mask & rxe_wr_mask::WR_ATOMIC_MASK != 0 {
+                unsafe { wqe.wr.wr.atomic.remote_addr }
+            } else if mask & rxe_wr_mask::WR_READ_OR_WRITE_MASK != 0 {
+                unsafe { wqe.wr.wr.rdma.remote_addr }
+            } else {
+                0
+            };
+            if !first || mask & rxe_wr_mask::WR_READ_MASK != 0 {
+                wqe.dma.resid = wqe.dma.length;
+                wqe.dma.cur_sge = 0;
+                wqe.dma.sge_offset = 0;
+            }
+            if first {
+                first = false;
+
+                if mask & rxe_wr_mask::WR_WRITE_OR_SEND_MASK != 0 {
+                    let npsn = (self.comp.psn - wqe.first_psn) & bth_mask::BTH_PSN_MASK;
+                    self.retry_first_write_send(wqe, npsn);
+                }
+
+                if mask & rxe_wr_mask::WR_READ_MASK != 0 {
+                    let npsn = (wqe.dma.length - wqe.dma.resid) / self.mtu;
+                    wqe.iova = (npsn * self.mtu) as u64;
+                }
+            }
+
+            wqe.state = WqeState::WqeStatePosted as _;
+
+            // get next wqe index
+            wqe_index = librxe_sys::queue_next_index(sq_buf, wqe_index as i32) as u32;
+        }
+    }
+
     fn next_opcode(
         &self,
         wqe: &librxe_sys::rxe_send_wqe,
         opcode: rdma_sys::ibv_wr_opcode::Type,
     ) -> Result<ibv_opcode::Type, Error> {
-        // FIXME: Using the MTU properties in QP struct
         let fits = wqe.dma.resid <= self.mtu;
         match self.qp_type() {
             ibv_qp_type::IBV_QPT_RC => self.next_opcode_rc(opcode, fits),
@@ -217,14 +289,42 @@ impl RxeQueuePair {
         }
     }
 
+    #[inline]
+    fn get_mtu(&self) -> u32 {
+        if self.qp_type() == ibv_qp_type::IBV_QPT_RC || self.qp_type() == ibv_qp_type::IBV_QPT_UC {
+            self.mtu
+        } else {
+            1024 // FIXME it should be the max mtu value: to_rdev(qp->ibqp.device)->port.mtu_cap
+        }
+    }
+
+    #[inline]
+    fn check_init_depth(&mut self, wqe: &mut librxe_sys::rxe_send_wqe) -> Result<(), Error> {
+        if wqe.has_rd_atomic != 0 {
+            return Ok(());
+        }
+        self.req.need_rd_atomic = 1;
+        let depth = self.dec_return_req_rd_atomic();
+        if depth >= 0 {
+            self.req.need_rd_atomic = 0;
+            wqe.has_rd_atomic = 1;
+            return Ok(());
+        }
+        self.inc_req_rd_atomic();
+
+        Err(Error::EAGAIN)
+    }
+
     fn req_next_wqe(&mut self) -> Option<*mut librxe_sys::rxe_send_wqe> {
-        let wqe = librxe_sys::queue_head::<librxe_sys::rxe_send_wqe>(self.sq_queue());
         let sq_buf = self.sq_queue();
+        let wqe = librxe_sys::queue_head::<librxe_sys::rxe_send_wqe>(sq_buf);
         let index = self.req.wqe_index as u32;
         let prod = librxe_sys::load_producer_index(sq_buf);
         let cons = librxe_sys::load_consumer_index(sq_buf);
 
         if unlikely(self.req.state == RxeQpState::QpStateDrain) {
+            // check to see if we are drained;
+            // state_lock used by requester and completer
             unsafe {
                 libc::pthread_spin_lock(&mut self.state_lock);
             }
@@ -248,6 +348,7 @@ impl RxeQueuePair {
                 unsafe {
                     libc::pthread_spin_unlock(&mut self.state_lock);
                 }
+                // TODO qp->ibqp.event_handler
                 break;
             }
         }
@@ -264,14 +365,27 @@ impl RxeQueuePair {
         ) {
             return None;
         }
-        if unlikely((wqe.wr.send_flags & ibv_send_flags::IBV_SEND_FENCE.0 != 0) && (index != cons))
-        {
-            self.req.wait_fence = 1;
-            return None;
-        }
         wqe.mask = wr_opcode_mask(self.qp_type(), wqe.wr.opcode);
 
         Some(wqe)
+    }
+
+    /// check if next wqe is fenced
+    ///
+    /// returns 1 if wqe needs to wait
+    ///         0 if wqe is ready to go
+    fn rxe_wqe_is_fenced(&mut self, wqe: &mut librxe_sys::rxe_send_wqe) -> bool {
+        // Local invalidate fence (LIF) see IBA 10.6.5.1
+        // Requires ALL previous operations on the send queue
+        // are complete. Make mandatory for the rxe driver.
+        return if wqe.wr.send_flags == ibv_wr_opcode::IBV_WR_LOCAL_INV {
+            self.req.wqe_index != librxe_sys::load_producer_index(self.sq_queue())
+        } else {
+            // Fence see IBA 10.8.3.3
+            // Requires that all previous read and atomic operations are complete.
+            wqe.wr.send_flags & ibv_send_flags::IBV_SEND_FENCE.0 != 0
+                && self.load_req_rd_atomic() != unsafe { self.attr.as_ref().max_rd_atomic }
+        };
     }
 
     fn init_req_packet(
@@ -460,22 +574,45 @@ impl RxeQueuePair {
         }
     }
 
+    /// the behavior is same as `goto err` in rxe_requester
+    ///
+    /// update wqe_index for each wqe completion
+    fn rxe_requester_err(&mut self, wqe: &mut librxe_sys::rxe_send_wqe) {
+        self.req.wqe_index =
+            librxe_sys::queue_next_index(self.sq_queue(), self.req.wqe_index as _) as _;
+        wqe.state = WqeState::WqeStateError as _;
+        self.req.state = RxeQpState::QpStateError;
+        // TODO rxe_run_task(&qp->comp.task, 0);
+    }
     pub fn rxe_requester(&mut self) -> Result<(), Error> {
-        // break the loop only if the current work request is not legal
+        // break the loop only if the current work request element is illegal
         loop {
-            if unlikely(!self.valid || self.req.state == RxeQpState::QpStateError) {
+            if unlikely(!self.valid) {
                 break;
             }
+            if unlikely(self.req.state == RxeQpState::QpStateError) {
+                if let Some(wqe) = self.req_next_wqe() {
+                    self.rxe_requester_err(unsafe { &mut (*wqe) });
+                }
+                break;
+            }
+
+            // we come here if the retransmit timer has fired
+            // or if the rnr timer has fired. If the retransmit
+            // timer fires while we are processing an RNR NAK wait
+            // until the rnr timer has fired before starting the
+            // retry flow
             if unlikely(self.req.state == RxeQpState::QpStateReset) {
                 self.req.wqe_index = load_consumer_index(self.sq_queue());
                 self.req.opcode = -1;
                 self.req.need_rd_atomic = 0;
                 self.req.wait_psn = 0;
                 self.req.need_retry = 0;
+                self.req.wait_for_rnr_timer = 0;
                 break;
             }
-            if unlikely(self.req.need_retry == 1) {
-                // TODO: impl req_retry(qp);
+            if unlikely(self.req.need_retry == 1 && self.req.wait_for_rnr_timer != 0) {
+                self.req_retry();
                 self.req.need_retry = 0;
             }
 
@@ -485,6 +622,10 @@ impl RxeQueuePair {
                 None => break,
             };
 
+            if self.rxe_wqe_is_fenced(wqe) {
+                self.req.wait_fence = 1;
+                break;
+            }
             if (wqe.mask & rxe_wr_mask::WR_LOCAL_OP_MASK as u32) != 0 {
                 // TODO: impl rxe_do_local_ops()
                 // skip this wqe
@@ -504,24 +645,26 @@ impl RxeQueuePair {
 
             let opcode = match self.next_opcode(&wqe, wqe.wr.opcode) {
                 Ok(opcode) => opcode,
-                // TODO: unlikely
                 Err(_) => {
                     wqe.state = WqeState::WqeStateError as _;
+                    self.rxe_requester_err(wqe);
                     break;
                 }
             };
 
             let mask = RXE_OPCODE_INFO[opcode as usize].mask;
             if unlikely((mask & rxe_hdr_mask::RXE_READ_OR_ATOMIC_MASK) != 0) {
-                // TODO: check_init_depth(qp, wqe)
-                break;
+                if self.check_init_depth(wqe).is_err() {
+                    break;
+                }
             }
             let mut payload = if (mask & rxe_hdr_mask::RXE_WRITE_OR_SEND_MASK) != 0 {
                 wqe.dma.resid
             } else {
                 0
             };
-            if payload > self.mtu {
+            let mtu = self.get_mtu();
+            if payload > mtu {
                 if self.qp_type() == ibv_qp_type::IBV_QPT_UD {
                     /* C10-93.1.1: If the total sum of all the buffer lengths specified for a
                      * UD message exceeds the MTU of the port as returned by QueryHCA, the CI
@@ -533,7 +676,8 @@ impl RxeQueuePair {
                     wqe.last_psn = self.req.psn;
                     self.req.psn = (self.req.psn + 1) & bth_mask::BTH_PSN_MASK;
                     self.req.opcode = ibv_opcode::IBV_OPCODE_UD_SEND_ONLY as _;
-                    // TODO: qp.req.wqe_index = queue_next_index
+                    self.req.wqe_index =
+                        librxe_sys::queue_next_index(self.sq_queue(), self.req.wqe_index as _) as _;
                     wqe.state = WqeState::WqeStateDone as _;
                     wqe.status = ibv_wc_status::IBV_WC_SUCCESS;
                     // TODO: 	__rxe_do_task(&qp->comp.task);
@@ -552,17 +696,25 @@ impl RxeQueuePair {
                 opcode as u8,
                 self.mtu,
             )));
-            let av = rxe_get_av(&pkt_info.borrow()).unwrap();
+            let av = if let Some(av) = rxe_get_av(&pkt_info.borrow()) {
+                av
+            } else {
+                error!("QP#{} failed to get no address vector", self.qp_num());
+                wqe.status = ibv_wc_status::IBV_WC_LOC_QP_OP_ERR;
+                self.rxe_requester_err(wqe);
+                break;
+            };
             // init iba packet buffer and header
             self.init_req_packet(&mut wqe, opcode, payload, &mut pkt_info.borrow_mut());
             // fill the iba packet content
             if let Err(ret) = self.finish_packet(wqe, &mut pkt_info.borrow_mut(), payload as _) {
+                error!("QP#{} error during finish packet", self.qp_num());
                 if ret == Errno::EFAULT {
                     wqe.status = ibv_wc_status::IBV_WC_LOC_PROT_ERR;
                 } else {
                     wqe.status = ibv_wc_status::IBV_WC_LOC_QP_OP_ERR;
                 }
-                wqe.state = WqeState::WqeStateError as _;
+                self.rxe_requester_err(wqe);
                 break;
             }
             // save state

@@ -2,14 +2,6 @@ use crate::*;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-// it is an unstable feature in std::sync::atomic
-// https://doc.rust-lang.org/std/sync/atomic/struct.AtomicU32.html#method.from_mut
-fn atomicu32_from_mut(v: &mut u32) -> &mut AtomicU32 {
-    use core::mem::align_of;
-    let [] = [(); align_of::<AtomicU32>() - align_of::<u32>()];
-    unsafe { &mut *(v as *mut u32 as *mut AtomicU32) }
-}
-
 #[inline]
 fn atomic_producer(q: *mut rxe_queue_buf) -> &'static mut AtomicU32 {
     let q = unsafe { &mut *q };

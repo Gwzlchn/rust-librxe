@@ -159,7 +159,7 @@ fn librxe_check_loopback() {
     qp.post_receive(
         &mr,
         unsafe { (data.as_mut_ptr().add(ARR_LEN >> 1)) as *mut u8 },
-        (data_bytes >> 1) as u32,
+        (data_bytes >> 2) as u32,
         RECEIVE_REQUEST_ID,
     )
     .unwrap();
@@ -175,6 +175,8 @@ fn librxe_check_loopback() {
     // mock received packet
     let mut recv_skb = unsafe { RxeSkb::rxe_udp_encap_recv(librxe::GLOBAL_IP_PKT_OUT.to_vec()) };
     recv_skb.rxe_rcv(&rxe_cxt).unwrap();
+    // let mut recv_skb = unsafe { RxeSkb::rxe_udp_encap_recv(librxe::GLOBAL_IP_PKT_OUT.to_vec()) };
+    // recv_skb.rxe_rcv(&rxe_cxt).unwrap();
     let mut completions = [create_default_ibv_wc(); MINIMUM_COMPLETION_QUEUE_SIZE as usize];
     let mut sent = true; // TODO do_complete
     let mut received = false;

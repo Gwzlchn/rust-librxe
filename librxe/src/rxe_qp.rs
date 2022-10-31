@@ -10,12 +10,14 @@ use libc::c_int;
 use librxe_sys::{rxe_queue_init, rxe_recv_wqe, rxe_send_wqe};
 use nix::Error;
 use rdma_sys::{
-    ibv_access_flags, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state, ibv_send_wr, ibv_sge,
+    ibv_access_flags, ibv_qp, ibv_qp_attr, ibv_qp_attr_mask, ibv_qp_state, ibv_qp_type,
+    ibv_send_wr, ibv_sge,
 };
 use std::alloc::{alloc, Layout};
 use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic::AtomicU8;
 use tracing::{debug, warn};
 
 pub struct RxeRq {
@@ -58,6 +60,7 @@ pub struct RxeReqInfo {
     pub need_rd_atomic: c_int,
     pub wait_psn: c_int,
     pub need_retry: c_int,
+    pub wait_for_rnr_timer: c_int,
     pub noack_pkts: c_int,
 }
 
@@ -92,6 +95,7 @@ pub struct RespRes {
     pub replay: u32,
     pub first_psn: u32,
     pub last_psn: u32,
+    pub cur_psn: u32,
     pub state: RdatmResState,
     // TODO atimoc
     pub read: RespResReadInfo,
@@ -571,6 +575,34 @@ impl RxeQueuePair {
     /// get receive queue buffer pointer
     pub fn rq_queue(&self) -> *mut librxe_sys::rxe_queue_buf {
         self.inner_qp.rq.queue
+    }
+
+    /// transform the type of req.rd_atomic from u8 to AtomicU8
+    #[inline]
+    fn atomic_rd_atomic(req: *mut RxeReqInfo) -> &'static mut AtomicU8 {
+        let req = unsafe { &mut *req };
+        librxe_sys::atomicu8_from_mut(&mut req.rd_atomic)
+    }
+
+    #[inline]
+    pub fn load_req_rd_atomic(&mut self) -> u8 {
+        let req_ptr = &mut self.req as *mut RxeReqInfo;
+        RxeQueuePair::atomic_rd_atomic(req_ptr).load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// return the new value, it may be negtive
+    #[inline]
+    pub fn dec_return_req_rd_atomic(&mut self) -> i8 {
+        let req_ptr = &mut self.req as *mut RxeReqInfo;
+        // it returns the old value
+        RxeQueuePair::atomic_rd_atomic(req_ptr).fetch_sub(1, std::sync::atomic::Ordering::Release);
+        RxeQueuePair::atomic_rd_atomic(req_ptr).load(std::sync::atomic::Ordering::Acquire) as i8
+    }
+
+    #[inline]
+    pub fn inc_req_rd_atomic(&mut self) {
+        let req_ptr = &mut self.req as *mut RxeReqInfo;
+        RxeQueuePair::atomic_rd_atomic(req_ptr).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
     // post a single receive request

@@ -5,7 +5,9 @@
 #![allow(non_snake_case)]
 #![allow(missing_docs)]
 #![allow(deref_nullptr)]
+
 use libc::*;
+use std::sync::atomic::{AtomicU32, AtomicU8};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -40,6 +42,20 @@ macro_rules! container_of {
         let offset = $crate::offset_of!($type, $($f)*);
         ptr.wrapping_offset(-offset) as *const $type
     }}
+}
+
+// it is an unstable feature in std::sync::atomic
+// https://doc.rust-lang.org/std/sync/atomic/struct.AtomicU32.html#method.from_mut
+pub fn atomicu32_from_mut(v: &mut u32) -> &mut AtomicU32 {
+    use core::mem::align_of;
+    let [] = [(); align_of::<AtomicU32>() - align_of::<u32>()];
+    unsafe { &mut *(v as *mut u32 as *mut AtomicU32) }
+}
+
+pub fn atomicu8_from_mut(v: &mut u8) -> &mut AtomicU8 {
+    use core::mem::align_of;
+    let [] = [(); align_of::<AtomicU8>() - align_of::<u8>()];
+    unsafe { &mut *(v as *mut u8 as *mut AtomicU8) }
 }
 
 #[inline]

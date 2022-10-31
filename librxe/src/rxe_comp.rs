@@ -3,7 +3,7 @@ use crate::{
     rxe_hdr::{aeth_syndrome, bth_mask, RxePktInfo},
     rxe_opcode::{rxe_hdr_mask, rxe_wr_mask},
     rxe_qp::{RxeQpState, RxeQueuePair},
-    rxe_verbs::{psn_compare, RxeMrCopyDir, WqeState},
+    rxe_verbs::{ib_rnr_timeout, psn_compare, RxeMrCopyDir, WqeState},
 };
 use librxe_sys::{self, advance_consumer, queue_head};
 use nix::Error;
@@ -11,7 +11,7 @@ use rdma_sys::{
     ibv_access_flags, ibv_opcode::*, ibv_qp_type, ibv_send_flags, ibv_wc_flags, ibv_wc_opcode,
     ibv_wc_status, ibv_wr_opcode,
 };
-use std::fmt;
+use std::{fmt, ptr::NonNull};
 use tracing::{debug, warn};
 
 enum CompState {
@@ -56,6 +56,44 @@ impl fmt::Display for CompState {
     }
 }
 
+const RNRNAK_USEC: [u64; 32] = {
+    let mut arr = [0u64; 32];
+    use ib_rnr_timeout::*;
+    arr[IB_RNR_TIMER_655_36 as usize] = 655360;
+    arr[IB_RNR_TIMER_000_01 as usize] = 10;
+    arr[IB_RNR_TIMER_000_02 as usize] = 20;
+    arr[IB_RNR_TIMER_000_03 as usize] = 30;
+    arr[IB_RNR_TIMER_000_04 as usize] = 40;
+    arr[IB_RNR_TIMER_000_06 as usize] = 60;
+    arr[IB_RNR_TIMER_000_08 as usize] = 80;
+    arr[IB_RNR_TIMER_000_12 as usize] = 120;
+    arr[IB_RNR_TIMER_000_16 as usize] = 160;
+    arr[IB_RNR_TIMER_000_24 as usize] = 240;
+    arr[IB_RNR_TIMER_000_32 as usize] = 320;
+    arr[IB_RNR_TIMER_000_48 as usize] = 480;
+    arr[IB_RNR_TIMER_000_64 as usize] = 640;
+    arr[IB_RNR_TIMER_000_96 as usize] = 960;
+    arr[IB_RNR_TIMER_001_28 as usize] = 1280;
+    arr[IB_RNR_TIMER_001_92 as usize] = 1920;
+    arr[IB_RNR_TIMER_002_56 as usize] = 2560;
+    arr[IB_RNR_TIMER_003_84 as usize] = 3840;
+    arr[IB_RNR_TIMER_005_12 as usize] = 5120;
+    arr[IB_RNR_TIMER_007_68 as usize] = 7680;
+    arr[IB_RNR_TIMER_010_24 as usize] = 10240;
+    arr[IB_RNR_TIMER_015_36 as usize] = 15360;
+    arr[IB_RNR_TIMER_020_48 as usize] = 20480;
+    arr[IB_RNR_TIMER_030_72 as usize] = 30720;
+    arr[IB_RNR_TIMER_040_96 as usize] = 40960;
+    arr[IB_RNR_TIMER_061_44 as usize] = 61410;
+    arr[IB_RNR_TIMER_081_92 as usize] = 81920;
+    arr[IB_RNR_TIMER_122_88 as usize] = 122880;
+    arr[IB_RNR_TIMER_163_84 as usize] = 163840;
+    arr[IB_RNR_TIMER_245_76 as usize] = 245760;
+    arr[IB_RNR_TIMER_327_68 as usize] = 327680;
+    arr[IB_RNR_TIMER_491_52 as usize] = 491520;
+    arr
+};
+
 pub fn wr_to_wc_opcode(opcode: ibv_wr_opcode::Type) -> ibv_wc_opcode::Type {
     match opcode {
         ibv_wr_opcode::IBV_WR_RDMA_WRITE => ibv_wc_opcode::IBV_WC_RDMA_WRITE,
@@ -80,34 +118,41 @@ impl RxeQueuePair {
     fn get_wqe_comp(
         &mut self,
         pkt_info: Option<&RxePktInfo>,
-        mut wqe: &mut librxe_sys::rxe_send_wqe,
-    ) -> CompState {
+    ) -> (CompState, Option<*mut librxe_sys::rxe_send_wqe>) {
+        // we come here whether or not we found a response packet to see if
+        // there are any posted WQEs
         let _wqe = queue_head::<librxe_sys::rxe_send_wqe>(self.sq_queue());
+
+        // no WQE or requester has not started it yet
         if _wqe.is_none() {
             return if pkt_info.is_some() {
-                CompState::CompstDone
+                (CompState::CompstDone, _wqe)
             } else {
-                CompState::CompstExit
+                (CompState::CompstExit, _wqe)
             };
         }
-        wqe = unsafe { &mut *_wqe.unwrap() };
+        let wqe = unsafe { &mut *_wqe.unwrap() };
+        // no WQE or requester has not started it yet
         if wqe.state == WqeState::WqeStatePosted as u32 {
             return if pkt_info.is_some() {
-                CompState::CompstDone
+                (CompState::CompstDone, _wqe)
             } else {
-                CompState::CompstExit
+                (CompState::CompstExit, _wqe)
             };
         }
+        // WQE does not require an ack
         if wqe.state == WqeState::WqeStateDone as u32 {
-            return CompState::CompstCompWqe;
+            return (CompState::CompstCompWqe, _wqe);
         }
+        // WQE caused an error
         if wqe.state == WqeState::WqeStateError as u32 {
-            return CompState::CompstError;
+            return (CompState::CompstError, _wqe);
         }
+        // we have a WQE, if we also have an ack check its PSN
         return if pkt_info.is_some() {
-            CompState::CompstCheckPsn
+            (CompState::CompstCheckPsn, _wqe)
         } else {
-            CompState::CompstExit
+            (CompState::CompstExit, _wqe)
         };
     }
 
@@ -141,16 +186,17 @@ impl RxeQueuePair {
         }
         /* compare response packet to expected response */
         let diff = psn_compare(pkt_info.psn, self.comp.psn);
-        if diff < 0 {
-            return if pkt_info.psn == wqe.last_psn {
+        return if diff < 0 {
+            if pkt_info.psn == wqe.last_psn {
                 CompState::CompstCompAck
             } else {
                 CompState::CompstDone
-            };
+            }
         } else if (diff > 0) && wqe.mask & rxe_wr_mask::WR_ATOMIC_OR_READ_MASK != 0 {
-            return CompState::CompstDone;
-        }
-        return CompState::CompstCheckAck;
+            CompState::CompstDone
+        } else {
+            CompState::CompstCheckAck
+        };
     }
 
     #[inline]
@@ -333,6 +379,7 @@ impl RxeQueuePair {
 
     #[inline]
     fn do_complete_comp(&mut self, wqe: &librxe_sys::rxe_send_wqe) {
+        // check we need to post a completion or not
         let _post = wqe.wr.send_flags & ibv_send_flags::IBV_SEND_SIGNALED.0 != 0
             || wqe.status != ibv_wc_status::IBV_WC_SUCCESS;
         let mut cqe = RxeCqe::default();
@@ -354,7 +401,7 @@ impl RxeQueuePair {
     ) -> CompState {
         if wqe.has_rd_atomic != 0 {
             wqe.has_rd_atomic = 0;
-            self.req.rd_atomic += 1; // TODO should use atomic_inc here
+            self.inc_req_rd_atomic();
             if self.req.need_rd_atomic != 0 {
                 self.comp.timeout_retry = 0;
                 self.req.need_rd_atomic = 0;
@@ -423,7 +470,6 @@ impl RxeQueuePair {
 
     pub fn rxe_completer(&mut self, pkt_info: *mut RxePktInfo) -> Result<(), Error> {
         let pkt_info = unsafe { &mut *pkt_info };
-
         if !self.valid
             || self.req.state == RxeQpState::QpStateError
             || self.req.state == RxeQpState::QpStateReset
@@ -442,6 +488,7 @@ impl RxeQueuePair {
         }
         let mut state = CompState::CompstGetAck;
         let mut wqe = librxe_sys::rxe_send_wqe::default();
+        // let mut wqe : Option<NonNull<librxe_sys::rxe_send_wqe>> = None
         loop {
             debug!("QP #{}, State {}", self.qp_num(), state);
             match state {
@@ -450,7 +497,8 @@ impl RxeQueuePair {
                     state = CompState::CompstGetWqe;
                 }
                 CompState::CompstGetWqe => {
-                    state = self.get_wqe_comp(Some(pkt_info), &mut wqe);
+                    let (_state, _wqe) = self.get_wqe_comp(Some(pkt_info));
+                    state = _state;
                 }
                 CompState::CompstCheckPsn => {
                     state = self.check_psn_comp(pkt_info, &wqe);
@@ -489,8 +537,29 @@ impl RxeQueuePair {
                     }
                     state = CompState::CompstDone;
                 }
-                CompState::CompstRnrRetry => {}
-                CompState::CompstError => todo!(),
+                CompState::CompstRnrRetry => {
+                    // we come here if we received an RNR NAK
+                    if self.comp.rnr_retry > 0 {
+                        if self.comp.rnr_retry != 7 {
+                            self.comp.rnr_retry -= 1;
+                        }
+                        // fired a rnr timer
+                        self.req.wait_for_rnr_timer = 1;
+                        debug!("QP #{}, set rnr nak timer", self.qp_num());
+                        // TODO mod_timer(&qp->rnr_nak_timer,
+                        // jiffies + rnrnak_jiffies(aeth_syn(pkt)
+                        //  & ~AETH_TYPE_MASK));
+                        break;
+                    } else {
+                        wqe.status = ibv_wc_status::IBV_WC_RNR_RETRY_EXC_ERR;
+                        state = CompState::CompstError;
+                    }
+                }
+                CompState::CompstError => {
+                    self.do_complete_comp(&wqe);
+                    // TODO rxe_qp_error(qp);
+                    break;
+                }
                 CompState::CompstExit => {
                     if self.comp.timeout_retry != 0 {
                         state = CompState::CompstErrorRetry;
@@ -514,7 +583,15 @@ impl RxeQueuePair {
                     }
                     break;
                 }
-                CompState::CompstErrorRetry => todo!(),
+                CompState::CompstErrorRetry => {
+                    /* we come here if the retry timer fired and we did
+                     * not receive a response packet. try to retry the send
+                     * queue if that makes sense and the limits have not
+                     * been exceeded. remember that some timeouts are
+                     * spurious since we do not reset the timer but kick
+                     * it down the road or let it expire
+                     */
+                }
                 CompState::CompstDone => return Ok(()),
             }
         }
