@@ -10,4 +10,4 @@ bindgen = "0.59"
 
 [dependencies]
 libc = "0.2.126"
-rdma-sys = {path="../../rdma-sys"}
+rdma-sys = { git ="https://github.com/Gwzlchn/rdma-sys"}

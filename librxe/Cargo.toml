@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 librxe-sys = { path = "../librxe-sys" }
-rdma-sys = {path="../../rdma-sys"}
+rdma-sys = { git ="https://github.com/Gwzlchn/rdma-sys"}
 nix = "0.24.1"
 libc = "0.2.126"
 
