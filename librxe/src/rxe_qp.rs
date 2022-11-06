@@ -444,7 +444,6 @@ impl RxeQueuePair {
         Ok(())
     }
 
-    /// generate a new memory region key, used for mr lkey and rkey
     fn gen_next_qp_num(ctx: NonNull<RxeContext>) -> u32 {
         loop {
             let key = rand::random::<u32>() % 100;
@@ -662,6 +661,56 @@ impl RxeQueuePair {
                 bind_mw_tso_union: std::mem::zeroed(),
             }
         };
+        let mut bad_wr: *mut rdma_sys::ibv_send_wr = std::ptr::null_mut::<rdma_sys::ibv_send_wr>();
+        let qp = self.as_ptr();
+        rxe_post_send(
+            qp,
+            &mut wr as *mut ibv_send_wr,
+            &mut bad_wr as *mut *mut ibv_send_wr,
+            userspace_doorbell,
+        )
+        .unwrap();
+        if userspace_doorbell {
+            self.rxe_requester()?
+        }
+        Ok(())
+    }
+
+    // post a single send request, READ or WRITE
+    #[inline]
+    pub fn post_send_singe_side(
+        &mut self,
+        mr: &RxeMr,
+        local_data_addr: *mut u8,
+        local_data_length: u32, // in bytes
+        remote_data_addr: *mut u8,
+        remote_rkey: u32,
+        opcode: rdma_sys::ibv_wr_opcode::Type,
+        wr_id: u64,
+        userspace_doorbell: bool,
+    ) -> Result<(), nix::Error> {
+        let mut sge = ibv_sge {
+            addr: local_data_addr as u64,
+            length: local_data_length,
+            lkey: mr.lkey(),
+        };
+        let mut wr = unsafe {
+            ibv_send_wr {
+                wr_id: wr_id,
+                next: std::ptr::null::<rdma_sys::ibv_send_wr>() as *mut _,
+                sg_list: &mut sge as *mut _,
+                num_sge: 1,
+                opcode: opcode,
+                send_flags: rdma_sys::ibv_send_flags::IBV_SEND_SIGNALED.0,
+                wr: std::mem::zeroed(),
+                qp_type: std::mem::zeroed(),
+                imm_data_invalidated_rkey_union: std::mem::zeroed(),
+                bind_mw_tso_union: std::mem::zeroed(),
+            }
+        };
+        wr.wr.rdma.remote_addr = remote_data_addr as u64;
+        wr.wr.rdma.rkey = remote_rkey;
+
         let mut bad_wr: *mut rdma_sys::ibv_send_wr = std::ptr::null_mut::<rdma_sys::ibv_send_wr>();
         let qp = self.as_ptr();
         rxe_post_send(

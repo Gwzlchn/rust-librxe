@@ -65,7 +65,7 @@ pub enum RxeMrLookupType {
     RxeLookupRemote,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum RdatmResState {
     #[default]
     RdatmResStateNext,

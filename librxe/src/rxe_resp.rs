@@ -546,7 +546,80 @@ impl RxeQueuePair {
     }
 
     fn read_reply(&mut self, req_pkt: &mut RxePktInfo) -> RespState {
-        todo!()
+        if self.resp.res.as_ref().is_none() {
+            let _res = Some(self.rxe_prepare_res(req_pkt, rxe_hdr_mask::RXE_READ_MASK));
+            self.resp.res = _res;
+        }
+        let mut res = self.resp.res.as_ref().unwrap();
+        let mut mr = self.resp.mr.as_ref();
+        let mut opcode = 0;
+        if res.as_ref().borrow().state == RdatmResState::RdatmResStateNew {
+            if res.as_ref().borrow().replay == 0 {
+                // mr = self.resp.mr.as_ref();
+                // TODO self.resp.mr = None;
+            } else {
+                // TODO
+            }
+            if res.as_ref().borrow().read.resid <= self.mtu {
+                opcode = ibv_opcode::IBV_OPCODE_RC_RDMA_READ_RESPONSE_ONLY;
+            } else {
+                opcode = ibv_opcode::IBV_OPCODE_RC_RDMA_READ_RESPONSE_FIRST;
+            }
+        } else {
+            // mr = rxe_recheck_mr(qp, res->read.rkey);
+            // if (!mr)
+            //     return RESPST_ERR_RKEY_VIOLATION;
+
+            // if (res->read.resid > mtu)
+            //     opcode = IB_OPCODE_RC_RDMA_READ_RESPONSE_MIDDLE;
+            // else
+            //     opcode = IB_OPCODE_RC_RDMA_READ_RESPONSE_LAST;
+        }
+        res.borrow_mut().state = RdatmResState::RdatmResStateNext;
+        let payload = std::cmp::min(res.as_ref().borrow().read.resid, self.mtu);
+        let mut ack_pkt = RxePktInfo::default();
+        let cur_psn = res.as_ref().borrow().cur_psn;
+        let mut skb = self.prepare_ack_packet(
+            req_pkt,
+            &mut ack_pkt,
+            opcode,
+            payload,
+            cur_psn,
+            aeth_syndrome::AETH_ACK_UNLIMITED,
+        );
+        if let Err(_) = mr.as_ref().unwrap().as_ref().borrow().rxe_mr_copy(
+            res.as_ref().borrow().read.va,
+            ack_pkt.payload_addr(),
+            payload as usize,
+            RxeMrCopyDir::RxeFromMrObj,
+        ) {
+            return RespState::RespstErrRnr;
+        }
+        if ack_pkt.bth_pad() != 0 {
+            unsafe {
+                let pad_addr = ack_pkt.payload_addr().add(payload as usize);
+                std::ptr::write_bytes(pad_addr, 0, ack_pkt.bth_pad() as usize);
+            }
+        }
+        // TODO WHY? 2022/11/06
+        skb.pkt_info = Rc::new(RefCell::new(ack_pkt.clone()));
+        skb.rxe_xmit_packet();
+        res.borrow_mut().read.va += payload as u64;
+        res.borrow_mut().read.resid -= payload;
+        res.borrow_mut().cur_psn = (cur_psn + 1) & bth_mask::BTH_PSN_MASK;
+
+        if res.borrow().read.resid > 0 {
+            return RespState::RespstDone;
+        } else {
+            // TODO self.resp.res = None;
+            if res.borrow().replay != 0 {
+                self.resp.opcode = -1;
+            }
+            if psn_compare(res.borrow().cur_psn, self.resp.psn) >= 0 {
+                self.resp.psn = res.borrow().cur_psn;
+            }
+            return RespState::RespstCleanup;
+        }
     }
 
     fn atomic_reply(&mut self, pkt: &mut RxePktInfo) -> RespState {
@@ -770,7 +843,7 @@ impl RxeQueuePair {
                         ibv_wc_status::IBV_WC_REM_INV_REQ_ERR,
                     );
                     state = RespState::RespstComplete;
-                },
+                }
                 RespState::RespstErrMissingOpcodeLastD1e => todo!(),
                 RespState::RespstErrRnr => todo!(),
                 RespState::RespstErrRkeyViolation => {
